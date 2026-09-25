@@ -1,0 +1,671 @@
+{
+  "brand": "СТАРТ",
+  "currency": "RUB",
+  "categories": [
+    {
+      "name": "Сырники",
+      "sort": 10,
+      "items": [
+        {
+          "name": "Сырники",
+          "price": 400,
+          "description": "",
+          "unit": "порция",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen",
+          "image": "/assets/cafe-ai-syrniki-v1-w960.webp"
+        }
+      ]
+    },
+    {
+      "name": "Супы",
+      "sort": 20,
+      "items": [
+        {
+          "name": "Том Ям с креветками и грибами",
+          "price": 800,
+          "weight": "360 г",
+          "description": "Острый суп по-тайски с креветками, грибами и пряными специями",
+          "tags": [
+            "острое",
+            "хит"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen",
+          "image": "/assets/cafe-pdf-tom-yum-w960.webp"
+        },
+        {
+          "name": "Гороховый суп с копчёностями",
+          "price": 400,
+          "weight": "250 г",
+          "description": "Классический гороховый суп с ароматными копчёностями и овощами",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen",
+          "image": "/assets/cafe-pdf-pea-soup-w960.webp"
+        },
+        {
+          "name": "Лапша с курицей",
+          "price": 400,
+          "weight": "250 г",
+          "description": "Лёгкий куриный суп с лапшой, зеленью и овощами",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen",
+          "image": "/assets/cafe-ai-chicken-noodles-v1-w960.webp"
+        },
+        {
+          "name": "Борщ оригинальный с говядиной",
+          "price": 400,
+          "weight": "250 г",
+          "description": "Классический борщ на говяжьем бульоне со свежими овощами",
+          "tags": [
+            "рекомендуем"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen",
+          "image": "/assets/cafe-ai-beef-borscht-v1-w960.webp"
+        },
+        {
+          "name": "Уха янтарная",
+          "price": 400,
+          "weight": "250 г",
+          "description": "Насыщенный рыбный суп с кусочками лосося, овощами и зеленью",
+          "tags": [
+            "хит",
+            "рекомендуем"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen",
+          "image": "/assets/cafe-pdf-fish-soup-w960.webp"
+        },
+        {
+          "name": "Лапша с фрикадельками",
+          "price": 400,
+          "weight": "250 г",
+          "description": "Домашний суп с нежными фрикадельками, лапшой и овощами",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen",
+          "image": "/assets/cafe-ai-meatball-noodles-v1-w960.webp"
+        },
+        {
+          "name": "Солянка по-домашнему",
+          "price": 400,
+          "weight": "250 г",
+          "description": "Сытный суп с копчёностями, маслинами, лимоном и зеленью",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen",
+          "image": "/assets/cafe-ai-solyanka-v1-w960.webp"
+        },
+        {
+          "name": "Суп с грибами и сыром",
+          "price": 400,
+          "weight": "250 г",
+          "description": "Нежный сливочный суп с шампиньонами и расплавленным сыром",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen",
+          "image": "/assets/cafe-ai-mushroom-cheese-soup-v1-w960.webp"
+        },
+        {
+          "name": "Лагман с говядиной",
+          "price": 400,
+          "weight": "250 г",
+          "description": "Сытный суп с говядиной, овощами и домашней лапшой",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen",
+          "image": "/assets/cafe-ai-beef-lagman-v1-w960.webp"
+        }
+      ]
+    },
+    {
+      "name": "Пицца",
+      "sort": 30,
+      "items": [
+        {
+          "name": "Маргарита песто",
+          "price": 800,
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen",
+          "image": "/assets/cafe-ai-margherita-pesto-v1-w960.webp"
+        },
+        {
+          "name": "4 сыра",
+          "price": 800,
+          "tags": [
+            "рекомендуем"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen",
+          "image": "/assets/cafe-ai-four-cheese-v1-w960.webp"
+        },
+        {
+          "name": "Супермясная",
+          "price": 800,
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen",
+          "image": "/assets/cafe-pdf-meat-pizza-w960.webp"
+        },
+        {
+          "name": "Дабл пепперони",
+          "price": 800,
+          "tags": [
+            "острое",
+            "рекомендуем"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen",
+          "image": "/assets/cafe-pdf-pepperoni-w960.webp"
+        },
+        {
+          "name": "Цыплёнок бешамель",
+          "price": 800,
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen",
+          "image": "/assets/cafe-ai-chicken-bechamel-v1-w960.webp"
+        },
+        {
+          "name": "Ветчина и грибы",
+          "price": 800,
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen",
+          "image": "/assets/cafe-ai-ham-mushroom-pizza-v1-w960.webp"
+        }
+      ]
+    },
+    {
+      "name": "Пельмени",
+      "sort": 40,
+      "items": [
+        {
+          "name": "Пельмени говяжьи",
+          "price": 800,
+          "weight": "300 г",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen",
+          "image": "/assets/cafe-ai-beef-pelmeni-v1-w960.webp"
+        }
+      ]
+    },
+    {
+      "name": "Закуски",
+      "sort": 50,
+      "items": [
+        {
+          "name": "Картошка фри",
+          "price": 400,
+          "tags": [
+            "рекомендуем"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen",
+          "image": "/assets/cafe-pdf-fries-cutout-w960.webp"
+        },
+        {
+          "name": "Стрипсы",
+          "price": 500,
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen",
+          "image": "/assets/cafe-pdf-strips-cutout-w960.webp"
+        },
+        {
+          "name": "Сырные палочки",
+          "price": 400,
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen",
+          "image": "/assets/cafe-pdf-cheese-sticks-cutout-w960.webp"
+        },
+        {
+          "name": "Креветки фри",
+          "price": 700,
+          "tags": [
+            "рекомендуем"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen",
+          "image": "/assets/cafe-pdf-shrimp-cutout-w960.webp"
+        }
+      ]
+    },
+    {
+      "name": "Чай",
+      "sort": 60,
+      "items": [
+        {
+          "name": "Классический чай",
+          "price": 500,
+          "volume": "500 мл",
+          "variants": [
+            "Ассам",
+            "Изысканный бергамот (Эрл Грей)",
+            "Кимун",
+            "Золотой пух",
+            "Чёрный с саган-дайля",
+            "Чёрный со специями и молоком"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar",
+          "image": "/assets/cafe-ai-black-tea-v1-w960.webp"
+        },
+        {
+          "name": "Травяной и ягодный чай",
+          "price": 700,
+          "volume": "500 мл",
+          "variants": [
+            "Иван-чай",
+            "Гречишный",
+            "Смородина с брусничным листом",
+            "Русские традиции",
+            "Шиповник",
+            "Мятная малина",
+            "Имбирный лимонник с ягодами годжи",
+            "Клюква, апельсин, корица",
+            "Таёжный",
+            "Облепиха с зелёным яблоком",
+            "Цветки липы, имбирь, тимьян",
+            "Чайный глинтвейн"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar",
+          "image": "/assets/cafe-pdf-berry-tea-w960.webp"
+        },
+        {
+          "name": "Чайный набор «У самовара»",
+          "price": 2000,
+          "description": "Самовар и чайник, цукаты, колотый сахар, цветочный мёд, варенье, сахарные плюшки, помадка, конфеты «Коровка», сдобное печенье, безе и маковые сушки.",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar",
+          "image": "/assets/cafe-ai-samovar-v1-w960.webp"
+        }
+      ]
+    },
+    {
+      "name": "Кофе и какао",
+      "sort": 70,
+      "items": [
+        {
+          "name": "Двойной эспрессо",
+          "price": 350,
+          "volume": "70 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar",
+          "image": "/assets/cafe-ai-double-espresso-v1-w960.webp"
+        },
+        {
+          "name": "Американо",
+          "price": 350,
+          "volume": "350 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar",
+          "image": "/assets/cafe-ai-americano-v1-w960.webp"
+        },
+        {
+          "name": "Капучино",
+          "price": 350,
+          "volume": "350 мл",
+          "tags": [
+            "рекомендуем"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar",
+          "image": "/assets/cafe-ai-cappuccino-v1-w960.webp"
+        },
+        {
+          "name": "Латте",
+          "price": 350,
+          "volume": "350 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar",
+          "image": "/assets/cafe-ai-latte-v1-w960.webp"
+        },
+        {
+          "name": "Флэт уайт",
+          "price": 350,
+          "volume": "250 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar",
+          "image": "/assets/cafe-ai-flat-white-v1-w960.webp"
+        },
+        {
+          "name": "Мокачино",
+          "price": 350,
+          "volume": "250 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar",
+          "image": "/assets/cafe-ai-mochaccino-v1-w960.webp"
+        },
+        {
+          "name": "Бамбл кофе",
+          "price": 500,
+          "volume": "500 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar",
+          "image": "/assets/cafe-ai-bumble-coffee-v1-w960.webp"
+        },
+        {
+          "name": "Какао",
+          "price": 350,
+          "volume": "250 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar",
+          "image": "/assets/cafe-ai-cocoa-v1-w960.webp"
+        }
+      ]
+    },
+    {
+      "name": "Холодные напитки",
+      "sort": 80,
+      "items": [
+        {
+          "name": "Смузи",
+          "price": 500,
+          "volume": "500 мл",
+          "variants": [
+            "Клубника-Банан",
+            "Облепиха-Банан"
+          ],
+          "tags": [
+            "рекомендуем"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar",
+          "image": "/assets/cafe-pdf-smoothie-w960.webp"
+        },
+        {
+          "name": "Вода JEVEA",
+          "price": 250,
+          "volume": "500 мл",
+          "variants": [
+            "С газом",
+            "Без газа"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar",
+          "image": "/assets/cafe-ai-water-v1-w960.webp"
+        },
+        {
+          "name": "Липтон",
+          "price": 300,
+          "volume": "500 мл",
+          "variants": [
+            "С лимоном",
+            "Зелёный"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar",
+          "image": "/assets/cafe-ai-iced-tea-v1-w960.webp"
+        },
+        {
+          "name": "Квас в банке",
+          "price": 300,
+          "volume": "500 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar",
+          "image": "/assets/cafe-ai-canned-kvass-v1-w960.webp"
+        },
+        {
+          "name": "Квас разливной",
+          "price": 350,
+          "volume": "500 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar",
+          "image": "/assets/cafe-ai-draft-kvass-v1-w960.webp"
+        },
+        {
+          "name": "Фанта",
+          "price": 300,
+          "volume": "500 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar",
+          "image": "/assets/cafe-ai-orange-soda-v1-w960.webp"
+        },
+        {
+          "name": "Кока-Кола",
+          "price": 300,
+          "volume": "330 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar",
+          "image": "/assets/cafe-ai-cola-v1-w960.webp"
+        },
+        {
+          "name": "Сок RICH",
+          "price": 450,
+          "volume": "200 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar",
+          "image": "/assets/cafe-ai-juice-v1-w960.webp"
+        }
+      ]
+    },
+    {
+      "name": "Безалкогольное пиво",
+      "sort": 90,
+      "items": [
+        {
+          "name": "Безалкогольное пиво",
+          "price": 450,
+          "volume": "500 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar",
+          "image": "/assets/cafe-ai-zero-beer-v1-w960.webp"
+        }
+      ]
+    },
+    {
+      "name": "Кальяны на чайной смеси",
+      "sort": 100,
+      "items": [
+        {
+          "name": "Кальян на чайной смеси",
+          "price": 3000,
+          "description": "Смесь на чайной основе, полностью без табака и никотина.",
+          "active": true,
+          "yacht_delivery": false,
+          "production_station": "tea_hookah",
+          "image": "/assets/cafe-ai-tea-shisha-v1-w960.webp"
+        }
+      ]
+    }
+  ],
+  "version": "2.0",
+  "notes": [
+    "Еда и кофе: исходное меню. Варианты чая: PDF владельца. Кальян: только чайная смесь без табака и никотина, по уточнению владельца. Доплаты предварительные: 50 ₽, альтернативное молоко 100 ₽."
+  ],
+  "modifier_group_templates": [
+    {
+      "key": "sauces",
+      "name": "Соусы",
+      "selection_type": "multiple",
+      "required": false,
+      "min_select": 0,
+      "max_select": 2,
+      "options": [
+        {
+          "name": "Кетчуп",
+          "price_delta": null,
+          "active": false
+        },
+        {
+          "name": "Сырный соус",
+          "price_delta": null,
+          "active": false
+        },
+        {
+          "name": "BBQ",
+          "price_delta": null,
+          "active": false
+        },
+        {
+          "name": "Чесночный соус",
+          "price_delta": null,
+          "active": false
+        }
+      ],
+      "suggested_items": [
+        "Картошка фри",
+        "Стрипсы",
+        "Сырные палочки",
+        "Креветки фри"
+      ]
+    },
+    {
+      "key": "coffee_sugar",
+      "name": "Сахар",
+      "selection_type": "single",
+      "required": false,
+      "min_select": 0,
+      "max_select": 1,
+      "options": [
+        {
+          "name": "Без сахара",
+          "price_delta": 0,
+          "active": true
+        },
+        {
+          "name": "1 пакетик",
+          "price_delta": 0,
+          "active": true
+        },
+        {
+          "name": "2 пакетика",
+          "price_delta": 0,
+          "active": true
+        },
+        {
+          "name": "3 пакетика",
+          "price_delta": 0,
+          "active": true
+        }
+      ],
+      "suggested_categories": [
+        "Кофе и какао"
+      ]
+    },
+    {
+      "key": "coffee_milk",
+      "name": "Молоко",
+      "selection_type": "single",
+      "required": false,
+      "min_select": 0,
+      "max_select": 1,
+      "options": [
+        {
+          "name": "Обычное",
+          "price_delta": 0,
+          "active": true
+        },
+        {
+          "name": "Овсяное",
+          "price_delta": null,
+          "active": false
+        },
+        {
+          "name": "Кокосовое",
+          "price_delta": null,
+          "active": false
+        },
+        {
+          "name": "Безлактозное",
+          "price_delta": null,
+          "active": false
+        }
+      ],
+      "suggested_items": [
+        "Капучино",
+        "Латте",
+        "Флэт уайт",
+        "Мокачино",
+        "Какао"
+      ]
+    },
+    {
+      "key": "syrniki_toppings",
+      "name": "Добавки к сырникам",
+      "selection_type": "multiple",
+      "required": false,
+      "min_select": 0,
+      "max_select": 3,
+      "options": [
+        {
+          "name": "Сгущёнка",
+          "price_delta": null,
+          "active": false
+        },
+        {
+          "name": "Сметана",
+          "price_delta": null,
+          "active": false
+        },
+        {
+          "name": "Варенье",
+          "price_delta": null,
+          "active": false
+        },
+        {
+          "name": "Мёд",
+          "price_delta": null,
+          "active": false
+        }
+      ],
+      "suggested_items": [
+        "Сырники"
+      ]
+    }
+  ],
+  "default_production_stations": [
+    {
+      "key": "kitchen",
+      "name": "Кухня"
+    },
+    {
+      "key": "bar",
+      "name": "Бар"
+    },
+    {
+      "key": "hookah",
+      "name": "Кальяны"
+    },
+    {
+      "key": "none",
+      "name": "Не печатать"
+    }
+  ]
+}

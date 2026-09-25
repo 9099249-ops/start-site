@@ -1,0 +1,8 @@
+(()=>{
+ const old=[...document.querySelectorAll('.status-card')].find(x=>x.textContent.includes('Температура воды'));if(!old)return;
+ old.innerHTML='<div style="width:100%"><details id="water-details"><summary style="cursor:pointer;font-weight:700;font-size:24px;line-height:1.4"><span id="water-value">Вода — нет свежих данных</span></summary><p style="font-size:14px;line-height:1.6">Данные для Пирогово, Московская область. Значение у причала может отличаться.<br><a href="https://yandex.ru/pogoda/ru/pirogovo-moscow-region" target="_blank" rel="noopener noreferrer">Источник: Яндекс Погода ↗</a><br><span id="water-updated">Обновление недоступно</span></p></details></div>';
+ const label=document.getElementById('water-value'),stamp=document.getElementById('water-updated');let expiry;
+ const empty=()=>{label.textContent='Вода — нет свежих данных';stamp.textContent='Свежий показатель пока недоступен.';};
+ async function update(){try{const r=await fetch('/api/water-temperature',{cache:'no-store',signal:AbortSignal.timeout(8000)});if(!r.ok)throw Error();const d=await r.json(),age=Date.now()-Date.parse(d.updatedAt);clearTimeout(expiry);if(!d.available||!Number.isFinite(d.temperature)||!Number.isFinite(age)||age>=d.maxAgeMs){empty();return;}label.textContent='Вода ≈ '+(d.temperature>0?'+':'')+d.temperature.toLocaleString('ru-RU')+' °C';stamp.textContent='Получено с источника: '+new Date(d.updatedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+' МСК. Это время загрузки, не замера у станции.';expiry=setTimeout(empty,Math.max(0,d.maxAgeMs-age));}catch{empty();}}
+ update();setInterval(update,300000);
+})();

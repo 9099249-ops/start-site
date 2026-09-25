@@ -1,0 +1,5 @@
+qrcode-generator 2.0.4
+Copyright (c) 2009 Kazuhiko Arase
+Source: https://www.npmjs.com/package/qrcode-generator/v/2.0.4
+Source code: https://github.com/kazuhikoarase/qrcode-generator
+License: MIT. License notice retained at the top of qrcode.js.

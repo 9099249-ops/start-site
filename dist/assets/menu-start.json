@@ -1,0 +1,729 @@
+{
+  "brand": "СТАРТ",
+  "currency": "RUB",
+  "categories": [
+    {
+      "name": "Сырники",
+      "sort": 10,
+      "items": [
+        {
+          "name": "Сырники",
+          "price": 400,
+          "description": "",
+          "unit": "порция",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen"
+        }
+      ]
+    },
+    {
+      "name": "Супы",
+      "sort": 20,
+      "items": [
+        {
+          "name": "Том Ям с креветками и грибами",
+          "price": 800,
+          "weight": "360 г",
+          "description": "Острый суп по-тайски с креветками, грибами и пряными специями",
+          "tags": [
+            "острое",
+            "хит"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen"
+        },
+        {
+          "name": "Гороховый суп с копчёностями",
+          "price": 400,
+          "weight": "250 г",
+          "description": "Классический гороховый суп с ароматными копчёностями и овощами",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen"
+        },
+        {
+          "name": "Лапша с курицей",
+          "price": 400,
+          "weight": "250 г",
+          "description": "Лёгкий куриный суп с лапшой, зеленью и овощами",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen"
+        },
+        {
+          "name": "Борщ оригинальный с говядиной",
+          "price": 400,
+          "weight": "250 г",
+          "description": "Классический борщ на говяжьем бульоне со свежими овощами",
+          "tags": [
+            "рекомендуем"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen"
+        },
+        {
+          "name": "Уха янтарная",
+          "price": 400,
+          "weight": "250 г",
+          "description": "Насыщенный рыбный суп с кусочками лосося, овощами и зеленью",
+          "tags": [
+            "хит",
+            "рекомендуем"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen"
+        },
+        {
+          "name": "Лапша с фрикадельками",
+          "price": 400,
+          "weight": "250 г",
+          "description": "Домашний суп с нежными фрикадельками, лапшой и овощами",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen"
+        },
+        {
+          "name": "Солянка по-домашнему",
+          "price": 400,
+          "weight": "250 г",
+          "description": "Сытный суп с копчёностями, маслинами, лимоном и зеленью",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen"
+        },
+        {
+          "name": "Суп с грибами и сыром",
+          "price": 400,
+          "weight": "250 г",
+          "description": "Нежный сливочный суп с шампиньонами и расплавленным сыром",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen"
+        },
+        {
+          "name": "Лагман с говядиной",
+          "price": 400,
+          "weight": "250 г",
+          "description": "Сытный суп с говядиной, овощами и домашней лапшой",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen"
+        }
+      ]
+    },
+    {
+      "name": "Пицца",
+      "sort": 30,
+      "items": [
+        {
+          "name": "Маргарита песто",
+          "price": 800,
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen"
+        },
+        {
+          "name": "4 сыра",
+          "price": 800,
+          "tags": [
+            "рекомендуем"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen"
+        },
+        {
+          "name": "Супермясная",
+          "price": 800,
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen"
+        },
+        {
+          "name": "Дабл пепперони",
+          "price": 800,
+          "tags": [
+            "острое",
+            "рекомендуем"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen"
+        },
+        {
+          "name": "Цыплёнок бешамель",
+          "price": 800,
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen"
+        },
+        {
+          "name": "Ветчина и грибы",
+          "price": 800,
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen"
+        }
+      ]
+    },
+    {
+      "name": "Пельмени",
+      "sort": 40,
+      "items": [
+        {
+          "name": "Пельмени говяжьи",
+          "price": 800,
+          "weight": "300 г",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen"
+        }
+      ]
+    },
+    {
+      "name": "Закуски",
+      "sort": 50,
+      "items": [
+        {
+          "name": "Картошка фри",
+          "price": 400,
+          "tags": [
+            "рекомендуем"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen"
+        },
+        {
+          "name": "Стрипсы",
+          "price": 500,
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen"
+        },
+        {
+          "name": "Сырные палочки",
+          "price": 400,
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen"
+        },
+        {
+          "name": "Креветки фри",
+          "price": 700,
+          "tags": [
+            "рекомендуем"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "kitchen"
+        }
+      ]
+    },
+    {
+      "name": "Чай",
+      "sort": 60,
+      "items": [
+        {
+          "name": "Чайник чая",
+          "price": 500,
+          "volume": "500 мл",
+          "description": "Выберите вкус",
+          "variants": [
+            "Чёрный",
+            "Зелёный",
+            "Таёжный",
+            "Мята",
+            "Женьшень улун",
+            "Чабрец",
+            "Улун",
+            "Глинвейн каркаде пряный",
+            "Роза",
+            "Ромашка",
+            "Анчан",
+            "Масала",
+            "Липа",
+            "Календула",
+            "Гвоздика",
+            "Анис",
+            "Травяной",
+            "Шиповник",
+            "Каркаде",
+            "Пуэр 3-х летний",
+            "Зелёный Вьетнам",
+            "Мальва",
+            "Горный букет",
+            "Шалфей",
+            "Жасмин"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar"
+        }
+      ]
+    },
+    {
+      "name": "Кофе и какао",
+      "sort": 70,
+      "items": [
+        {
+          "name": "Двойной эспрессо",
+          "price": 350,
+          "volume": "70 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar"
+        },
+        {
+          "name": "Американо",
+          "price": 350,
+          "volume": "350 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar"
+        },
+        {
+          "name": "Капучино",
+          "price": 350,
+          "volume": "350 мл",
+          "tags": [
+            "рекомендуем"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar"
+        },
+        {
+          "name": "Латте",
+          "price": 350,
+          "volume": "350 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar"
+        },
+        {
+          "name": "Флэт уайт",
+          "price": 350,
+          "volume": "250 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar"
+        },
+        {
+          "name": "Мокачино",
+          "price": 350,
+          "volume": "250 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar"
+        },
+        {
+          "name": "Бамбл кофе",
+          "price": 500,
+          "volume": "500 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar"
+        },
+        {
+          "name": "Какао",
+          "price": 350,
+          "volume": "250 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar"
+        }
+      ]
+    },
+    {
+      "name": "Холодные напитки",
+      "sort": 80,
+      "items": [
+        {
+          "name": "Смузи",
+          "price": 500,
+          "volume": "500 мл",
+          "variants": [
+            "Клубника-Банан",
+            "Облепиха-Банан"
+          ],
+          "tags": [
+            "рекомендуем"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar"
+        },
+        {
+          "name": "Вода JEVEA",
+          "price": 250,
+          "volume": "500 мл",
+          "variants": [
+            "С газом",
+            "Без газа"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar"
+        },
+        {
+          "name": "Липтон",
+          "price": 300,
+          "volume": "500 мл",
+          "variants": [
+            "С лимоном",
+            "Зелёный"
+          ],
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar"
+        },
+        {
+          "name": "Квас в банке",
+          "price": 300,
+          "volume": "500 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar"
+        },
+        {
+          "name": "Квас разливной",
+          "price": 350,
+          "volume": "500 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar"
+        },
+        {
+          "name": "Фанта",
+          "price": 300,
+          "volume": "500 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar"
+        },
+        {
+          "name": "Кока-Кола",
+          "price": 300,
+          "volume": "330 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar"
+        },
+        {
+          "name": "Сок RICH",
+          "price": 450,
+          "volume": "200 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar"
+        }
+      ]
+    },
+    {
+      "name": "Пиво",
+      "sort": 90,
+      "items": [
+        {
+          "name": "Пиво разливное Helles / Krone BLANCHE",
+          "price": 500,
+          "volume": "500 мл",
+          "active": true,
+          "yacht_delivery": false,
+          "requires_age_check": true,
+          "production_station": "bar"
+        },
+        {
+          "name": "Corona Extra",
+          "price": 450,
+          "volume": "350 мл",
+          "active": true,
+          "yacht_delivery": false,
+          "requires_age_check": true,
+          "production_station": "bar"
+        },
+        {
+          "name": "Безалкогольное пиво",
+          "price": 450,
+          "volume": "500 мл",
+          "active": true,
+          "yacht_delivery": true,
+          "production_station": "bar"
+        },
+        {
+          "name": "Max Jack",
+          "price": 450,
+          "volume": "500 мл",
+          "variants": [
+            "Клубника",
+            "Лимон-Лайм"
+          ],
+          "active": true,
+          "yacht_delivery": false,
+          "requires_age_check": true,
+          "production_station": "bar"
+        }
+      ]
+    },
+    {
+      "name": "Кальяны",
+      "sort": 100,
+      "items": [
+        {
+          "name": "Blooming Paradies",
+          "price": 3000,
+          "description": "Яркий цитрусовый микс из экзотических тропиков с нотками цитрусового киви и чая",
+          "active": true,
+          "yacht_delivery": false,
+          "production_station": "hookah"
+        },
+        {
+          "name": "Garned Star",
+          "price": 3000,
+          "description": "Взрывное сочетание кислого и сладкого с лёгкой ноткой кокоса",
+          "active": true,
+          "yacht_delivery": false,
+          "production_station": "hookah"
+        },
+        {
+          "name": "Coconut Island",
+          "price": 3000,
+          "description": "Сочетание кокоса, булочки с корицей и ноток карамели",
+          "active": true,
+          "yacht_delivery": false,
+          "production_station": "hookah"
+        },
+        {
+          "name": "Entrudo",
+          "price": 3000,
+          "description": "Сочетание кислых фруктов и сладких ягод",
+          "active": true,
+          "yacht_delivery": false,
+          "production_station": "hookah"
+        },
+        {
+          "name": "Кисло-сладкий топчик #30",
+          "price": 3000,
+          "description": "Киви-смузи 40% / Ананасовые колечки 30% / Азиатский личи 30%",
+          "active": true,
+          "yacht_delivery": false,
+          "production_station": "hookah"
+        },
+        {
+          "name": "Ruby Fizz #29",
+          "price": 3000,
+          "description": "Просекко 50% / Клюква 30% / Вишнёвый сок 20%",
+          "active": true,
+          "yacht_delivery": false,
+          "production_station": "hookah"
+        },
+        {
+          "name": "Топчег #15",
+          "price": 3000,
+          "description": "Виноград и мята 40% / Ананасовые колечки 30% / Малина 30%",
+          "active": true,
+          "yacht_delivery": false,
+          "production_station": "hookah"
+        },
+        {
+          "name": "Вечное наслаждение #14",
+          "price": 3000,
+          "description": "Киви-смузи 70% / Пинкман 30%",
+          "active": true,
+          "yacht_delivery": false,
+          "production_station": "hookah"
+        },
+        {
+          "name": "Musthave vs Doctor Smoke #11",
+          "price": 3000,
+          "description": "Ананасовые колечки 40% / Киви-смузи 40% / Охлаждающий 20%",
+          "active": true,
+          "yacht_delivery": false,
+          "production_station": "hookah"
+        },
+        {
+          "name": "Добавка в колбу: молоко",
+          "price": 500,
+          "active": true,
+          "yacht_delivery": false,
+          "production_station": "hookah"
+        },
+        {
+          "name": "Добавка в колбу: апельсин",
+          "price": 500,
+          "active": true,
+          "yacht_delivery": false,
+          "production_station": "hookah"
+        }
+      ]
+    }
+  ],
+  "version": "2.0",
+  "notes": [
+    "Основные блюда и цены перенесены из исходного печатного меню; добавлены сырники 400 ₽.",
+    "Шаблоны модификаторов ниже нужны для архитектуры. Платные цены, которых нет в исходном меню, не выдумывать: заполнить в админке перед включением."
+  ],
+  "modifier_group_templates": [
+    {
+      "key": "sauces",
+      "name": "Соусы",
+      "selection_type": "multiple",
+      "required": false,
+      "min_select": 0,
+      "max_select": 2,
+      "options": [
+        {
+          "name": "Кетчуп",
+          "price_delta": null,
+          "active": false
+        },
+        {
+          "name": "Сырный соус",
+          "price_delta": null,
+          "active": false
+        },
+        {
+          "name": "BBQ",
+          "price_delta": null,
+          "active": false
+        },
+        {
+          "name": "Чесночный соус",
+          "price_delta": null,
+          "active": false
+        }
+      ],
+      "suggested_items": [
+        "Картошка фри",
+        "Стрипсы",
+        "Сырные палочки",
+        "Креветки фри"
+      ]
+    },
+    {
+      "key": "coffee_sugar",
+      "name": "Сахар",
+      "selection_type": "single",
+      "required": false,
+      "min_select": 0,
+      "max_select": 1,
+      "options": [
+        {
+          "name": "Без сахара",
+          "price_delta": 0,
+          "active": true
+        },
+        {
+          "name": "1 пакетик",
+          "price_delta": 0,
+          "active": true
+        },
+        {
+          "name": "2 пакетика",
+          "price_delta": 0,
+          "active": true
+        },
+        {
+          "name": "3 пакетика",
+          "price_delta": 0,
+          "active": true
+        }
+      ],
+      "suggested_categories": [
+        "Кофе и какао"
+      ]
+    },
+    {
+      "key": "coffee_milk",
+      "name": "Молоко",
+      "selection_type": "single",
+      "required": false,
+      "min_select": 0,
+      "max_select": 1,
+      "options": [
+        {
+          "name": "Обычное",
+          "price_delta": 0,
+          "active": true
+        },
+        {
+          "name": "Овсяное",
+          "price_delta": null,
+          "active": false
+        },
+        {
+          "name": "Кокосовое",
+          "price_delta": null,
+          "active": false
+        },
+        {
+          "name": "Безлактозное",
+          "price_delta": null,
+          "active": false
+        }
+      ],
+      "suggested_items": [
+        "Капучино",
+        "Латте",
+        "Флэт уайт",
+        "Мокачино",
+        "Какао"
+      ]
+    },
+    {
+      "key": "syrniki_toppings",
+      "name": "Добавки к сырникам",
+      "selection_type": "multiple",
+      "required": false,
+      "min_select": 0,
+      "max_select": 3,
+      "options": [
+        {
+          "name": "Сгущёнка",
+          "price_delta": null,
+          "active": false
+        },
+        {
+          "name": "Сметана",
+          "price_delta": null,
+          "active": false
+        },
+        {
+          "name": "Варенье",
+          "price_delta": null,
+          "active": false
+        },
+        {
+          "name": "Мёд",
+          "price_delta": null,
+          "active": false
+        }
+      ],
+      "suggested_items": [
+        "Сырники"
+      ]
+    }
+  ],
+  "default_production_stations": [
+    {
+      "key": "kitchen",
+      "name": "Кухня"
+    },
+    {
+      "key": "bar",
+      "name": "Бар"
+    },
+    {
+      "key": "hookah",
+      "name": "Кальяны"
+    },
+    {
+      "key": "none",
+      "name": "Не печатать"
+    }
+  ]
+}

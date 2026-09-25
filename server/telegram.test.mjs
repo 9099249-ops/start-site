@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {bookingText,sendBooking} from './telegram.mjs';
+const b={equipment:'sup',plan:'hour',name:'Тест',phone:'+7 (900) 000-00-00',date:'2026-09-25',time:'12:00',duration:1,quantity:1};
+const now=new Date('2026-09-20T12:00:00Z');
+test('Valid request contains selected equipment, contact and unconfirmed status',()=>{const t=bookingText(b,now);assert.match(t,/САПборд/);assert.match(t,/Требуется подтверждение/);assert.match(t,/12:00/);});
+test('Rejects forged fields, impossible dates and rentals after closing',()=>{for(const change of [{equipment:'unknown'},{plan:'day',equipment:'boat'},{date:'2026-09-31'},{date:'2026-03-31'},{time:'21:30',duration:1},{quantity:0},{name:'Иван\nПодтверждено'},{phone:'invalid'}])assert.throws(()=>bookingText({...b,...change},now));});
+test('Season pass needs no appointment',()=>assert.match(bookingText({...b,plan:'season',date:'',time:''},now),/Именной/));
+test('Missing credentials never call Telegram',async()=>{let called=false;await assert.rejects(sendBooking('test',{},async()=>{called=true;}),/not_configured/);assert.equal(called,false);});
+test('Recipient comes only from server configuration; no formatting injection',async()=>{await sendBooking('test',{TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'123'},async(url,options)=>{assert.equal(new URL(url).hostname,'api.telegram.org');const body=JSON.parse(options.body);assert.equal(body.chat_id,'123');assert.equal(body.parse_mode,undefined);return {ok:true,json:async()=>({ok:true})};});});
+test('Telegram refusal and timeout never report success or leak token',async()=>{for(const mock of [async()=>({ok:false,json:async()=>({ok:false})}),async()=>{throw new Error('secret-token');}])await assert.rejects(sendBooking('test',{TELEGRAM_BOT_TOKEN:'secret-token',TELEGRAM_CHAT_ID:'123'},mock),{message:'delivery_unconfirmed'});});

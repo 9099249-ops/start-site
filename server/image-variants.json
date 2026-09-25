@@ -1,0 +1,433 @@
+{
+  "/assets/aelita-captain.webp": [
+    {
+      "src": "/assets/aelita-captain-w480.webp",
+      "width": 480,
+      "bytes": 32128
+    }
+  ],
+  "/assets/boards.webp": [
+    {
+      "src": "/assets/boards-w480.webp",
+      "width": 480,
+      "bytes": 27414
+    },
+    {
+      "src": "/assets/boards-w960.webp",
+      "width": 960,
+      "bytes": 104770
+    }
+  ],
+  "/assets/boat.webp": [
+    {
+      "src": "/assets/boat-w480.webp",
+      "width": 480,
+      "bytes": 32804
+    },
+    {
+      "src": "/assets/boat-w960.webp",
+      "width": 960,
+      "bytes": 123122
+    },
+    {
+      "src": "/assets/boat-w1600.webp",
+      "width": 1600,
+      "bytes": 297230
+    }
+  ],
+  "/assets/catamaran.webp": [
+    {
+      "src": "/assets/catamaran-w480.webp",
+      "width": 480,
+      "bytes": 58218
+    },
+    {
+      "src": "/assets/catamaran-w960.webp",
+      "width": 960,
+      "bytes": 184992
+    }
+  ],
+  "/assets/event-chess.webp": [
+    {
+      "src": "/assets/event-chess-w480.webp",
+      "width": 480,
+      "bytes": 35030
+    },
+    {
+      "src": "/assets/event-chess-w960.webp",
+      "width": 960,
+      "bytes": 102114
+    }
+  ],
+  "/assets/event-concerts.webp": [
+    {
+      "src": "/assets/event-concerts-w480.webp",
+      "width": 480,
+      "bytes": 31800
+    },
+    {
+      "src": "/assets/event-concerts-w960.webp",
+      "width": 960,
+      "bytes": 98096
+    }
+  ],
+  "/assets/event-painting.webp": [
+    {
+      "src": "/assets/event-painting-w480.webp",
+      "width": 480,
+      "bytes": 40072
+    },
+    {
+      "src": "/assets/event-painting-w960.webp",
+      "width": 960,
+      "bytes": 119218
+    }
+  ],
+  "/assets/harbor.webp": [
+    {
+      "src": "/assets/harbor-w480.webp",
+      "width": 479,
+      "bytes": 19890
+    },
+    {
+      "src": "/assets/harbor-w960.webp",
+      "width": 959,
+      "bytes": 69914
+    },
+    {
+      "src": "/assets/harbor-w1600.webp",
+      "width": 1600,
+      "bytes": 156502
+    }
+  ],
+  "/assets/reservoir-original.jpg": [
+    {
+      "src": "/assets/reservoir-original-w480.webp",
+      "width": 480,
+      "bytes": 32892
+    },
+    {
+      "src": "/assets/reservoir-original-w960.webp",
+      "width": 960,
+      "bytes": 97672
+    }
+  ],
+  "/assets/reservoir-routes-draft.png": [
+    {
+      "src": "/assets/reservoir-routes-draft-w480.webp",
+      "width": 480,
+      "bytes": 36684
+    },
+    {
+      "src": "/assets/reservoir-routes-draft-w960.webp",
+      "width": 959,
+      "bytes": 107924
+    },
+    {
+      "src": "/assets/reservoir-routes-draft-w1600.webp",
+      "width": 1599,
+      "bytes": 204740
+    }
+  ],
+  "/assets/start-pier-20260731.jpg": [
+    {
+      "src": "/assets/start-pier-20260731-w480.webp",
+      "width": 480,
+      "bytes": 36398
+    },
+    {
+      "src": "/assets/start-pier-20260731-w960.webp",
+      "width": 960,
+      "bytes": 128606
+    },
+    {
+      "src": "/assets/start-pier-20260731-w1600.webp",
+      "width": 1600,
+      "bytes": 310682
+    }
+  ],
+  "/assets/sup.webp": [
+    {
+      "src": "/assets/sup-w480.webp",
+      "width": 480,
+      "bytes": 30188
+    },
+    {
+      "src": "/assets/sup-w960.webp",
+      "width": 960,
+      "bytes": 103948
+    }
+  ],
+  "/assets/fleet-20260921-boat-w960.webp": [
+    {
+      "src": "/assets/fleet-20260921-boat-w480.webp",
+      "width": 480,
+      "bytes": 43796
+    },
+    {
+      "src": "/assets/fleet-20260921-boat-w960.webp",
+      "width": 960,
+      "bytes": 140944
+    },
+    {
+      "src": "/assets/fleet-20260921-boat-w1600.webp",
+      "width": 1600,
+      "bytes": 306474
+    }
+  ],
+  "/assets/fleet-20260921-catamaran-w960.webp": [
+    {
+      "src": "/assets/fleet-20260921-catamaran-w480.webp",
+      "width": 480,
+      "bytes": 50448
+    },
+    {
+      "src": "/assets/fleet-20260921-catamaran-w960.webp",
+      "width": 960,
+      "bytes": 150818
+    },
+    {
+      "src": "/assets/fleet-20260921-catamaran-w1600.webp",
+      "width": 1600,
+      "bytes": 307780
+    }
+  ],
+  "/assets/fleet-20260921-bike-w960.webp": [
+    {
+      "src": "/assets/fleet-20260921-bike-w480.webp",
+      "width": 480,
+      "bytes": 37208
+    },
+    {
+      "src": "/assets/fleet-20260921-bike-w960.webp",
+      "width": 960,
+      "bytes": 123232
+    },
+    {
+      "src": "/assets/fleet-20260921-bike-w1600.webp",
+      "width": 1600,
+      "bytes": 274080
+    }
+  ],
+  "/assets/fleet-20260921-bike-2-w960.webp": [
+    {
+      "src": "/assets/fleet-20260921-bike-2-w480.webp",
+      "width": 480,
+      "bytes": 56900
+    },
+    {
+      "src": "/assets/fleet-20260921-bike-2-w960.webp",
+      "width": 960,
+      "bytes": 168290
+    },
+    {
+      "src": "/assets/fleet-20260921-bike-2-w1600.webp",
+      "width": 1600,
+      "bytes": 357294
+    }
+  ],
+  "/assets/fleet-20260921-bike-3-w960.webp": [
+    {
+      "src": "/assets/fleet-20260921-bike-3-w480.webp",
+      "width": 480,
+      "bytes": 60992
+    },
+    {
+      "src": "/assets/fleet-20260921-bike-3-w960.webp",
+      "width": 960,
+      "bytes": 190016
+    },
+    {
+      "src": "/assets/fleet-20260921-bike-3-w1600.webp",
+      "width": 1600,
+      "bytes": 379816
+    }
+  ],
+  "/assets/fleet-20260921-kayak-w960.webp": [
+    {
+      "src": "/assets/fleet-20260921-kayak-w480.webp",
+      "width": 480,
+      "bytes": 35244
+    },
+    {
+      "src": "/assets/fleet-20260921-kayak-w960.webp",
+      "width": 960,
+      "bytes": 93132
+    },
+    {
+      "src": "/assets/fleet-20260921-kayak-w1600.webp",
+      "width": 1600,
+      "bytes": 190374
+    }
+  ],
+  "/assets/fleet-20260921-kayak2-w960.webp": [
+    {
+      "src": "/assets/fleet-20260921-kayak2-w480.webp",
+      "width": 480,
+      "bytes": 44504
+    },
+    {
+      "src": "/assets/fleet-20260921-kayak2-w960.webp",
+      "width": 960,
+      "bytes": 140698
+    },
+    {
+      "src": "/assets/fleet-20260921-kayak2-w1600.webp",
+      "width": 1600,
+      "bytes": 302198
+    }
+  ],
+  "/assets/fleet-20260921-kayak3-w960.webp": [
+    {
+      "src": "/assets/fleet-20260921-kayak3-w480.webp",
+      "width": 480,
+      "bytes": 57254
+    },
+    {
+      "src": "/assets/fleet-20260921-kayak3-w960.webp",
+      "width": 960,
+      "bytes": 182700
+    },
+    {
+      "src": "/assets/fleet-20260921-kayak3-w1600.webp",
+      "width": 1600,
+      "bytes": 408102
+    }
+  ],
+  "/assets/fleet-20260921-sup-w960.webp": [
+    {
+      "src": "/assets/fleet-20260921-sup-w480.webp",
+      "width": 480,
+      "bytes": 69600
+    },
+    {
+      "src": "/assets/fleet-20260921-sup-w960.webp",
+      "width": 960,
+      "bytes": 273522
+    },
+    {
+      "src": "/assets/fleet-20260921-sup-w1600.webp",
+      "width": 1600,
+      "bytes": 663724
+    }
+  ],
+  "/assets/fleet-20260921-big-w960.webp": [
+    {
+      "src": "/assets/fleet-20260921-big-w480.webp",
+      "width": 480,
+      "bytes": 38660
+    },
+    {
+      "src": "/assets/fleet-20260921-big-w960.webp",
+      "width": 960,
+      "bytes": 117812
+    },
+    {
+      "src": "/assets/fleet-20260921-big-w1600.webp",
+      "width": 1600,
+      "bytes": 241508
+    }
+  ],
+  "/assets/fleet-20260921-rowing-w960.webp": [
+    {
+      "src": "/assets/fleet-20260921-rowing-w480.webp",
+      "width": 480,
+      "bytes": 56086
+    },
+    {
+      "src": "/assets/fleet-20260921-rowing-w960.webp",
+      "width": 960,
+      "bytes": 148856
+    },
+    {
+      "src": "/assets/fleet-20260921-rowing-w1600.webp",
+      "width": 1600,
+      "bytes": 293824
+    }
+  ],
+  "/assets/fleet-20260921-electric-w960.webp": [
+    {
+      "src": "/assets/fleet-20260921-electric-w480.webp",
+      "width": 480,
+      "bytes": 67912
+    },
+    {
+      "src": "/assets/fleet-20260921-electric-w960.webp",
+      "width": 960,
+      "bytes": 225622
+    },
+    {
+      "src": "/assets/fleet-20260921-electric-w1600.webp",
+      "width": 1600,
+      "bytes": 536366
+    }
+  ],
+  "/assets/fleet-20260921-electric-2-w960.webp": [
+    {
+      "src": "/assets/fleet-20260921-electric-2-w480.webp",
+      "width": 480,
+      "bytes": 63636
+    },
+    {
+      "src": "/assets/fleet-20260921-electric-2-w960.webp",
+      "width": 960,
+      "bytes": 184924
+    },
+    {
+      "src": "/assets/fleet-20260921-electric-2-w1600.webp",
+      "width": 1600,
+      "bytes": 402122
+    }
+  ],
+  "/assets/fleet-20260921-electric-3-w960.webp": [
+    {
+      "src": "/assets/fleet-20260921-electric-3-w480.webp",
+      "width": 480,
+      "bytes": 74866
+    },
+    {
+      "src": "/assets/fleet-20260921-electric-3-w960.webp",
+      "width": 960,
+      "bytes": 264914
+    },
+    {
+      "src": "/assets/fleet-20260921-electric-3-w1600.webp",
+      "width": 1600,
+      "bytes": 660034
+    }
+  ],
+  "/assets/fleet-20260921-glow-w960.webp": [
+    {
+      "src": "/assets/fleet-20260921-glow-w480.webp",
+      "width": 480,
+      "bytes": 32998
+    },
+    {
+      "src": "/assets/fleet-20260921-glow-w960.webp",
+      "width": 960,
+      "bytes": 85520
+    },
+    {
+      "src": "/assets/fleet-20260921-glow-w1600.webp",
+      "width": 1600,
+      "bytes": 168574
+    }
+  ],
+  "/assets/fleet-20260921-glow-2-w960.webp": [
+    {
+      "src": "/assets/fleet-20260921-glow-2-w480.webp",
+      "width": 480,
+      "bytes": 34190
+    },
+    {
+      "src": "/assets/fleet-20260921-glow-2-w960.webp",
+      "width": 960,
+      "bytes": 93344
+    },
+    {
+      "src": "/assets/fleet-20260921-glow-2-w1600.webp",
+      "width": 1600,
+      "bytes": 193894
+    }
+  ]
+}

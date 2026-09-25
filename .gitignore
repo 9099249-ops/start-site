@@ -1,0 +1,40 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+.telegram-secret
+.openai/
+.codex/
+# Private runtime data and backups
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+data/
+media/
+backups/
+site-backups/
+tmp/
+output/
+outputs/
+*.log
+*.zip
+*.tgz
+*.tar.gz
+# Dependencies and local tools
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+game-src/dist/
+!game-src/src/data/
+!game-src/src/data/**
+!game-src/public/data/
+!game-src/public/data/**
+!dist/game/data/
+!dist/game/data/**

@@ -1,0 +1,22 @@
+.ops-nav{position:sticky;top:0;z-index:40;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:5px 8px;background:#fff;border-bottom:1px solid #dce3ed;font:600 15px/1.2 system-ui,sans-serif}
+.ops-nav a{display:flex;align-items:center;justify-content:center;min-height:38px;border:1px solid #cad6df;border-radius:6px;text-decoration:none;color:#102238;background:#f1f5fa;white-space:nowrap}
+.ops-nav a[aria-current=page]{background:#ffca48;border-color:#ffca48;color:#102238}
+.ops-nav a:focus-visible{outline:3px solid #1554eb;outline-offset:1px}
+.ops-nav:has(.ops-logout:not([hidden])){grid-template-columns:repeat(3,minmax(0,1fr)) auto}
+.ops-nav .ops-logout{min-height:44px;min-width:62px;padding:5px 8px;margin:0;border:1px solid #adbac8;border-radius:6px;background:#fff;color:#263b50;font:700 11px/1.2 system-ui,sans-serif;cursor:pointer;touch-action:manipulation}
+.ops-nav .ops-logout:focus-visible{outline:3px solid #1554eb;outline-offset:1px}.ops-nav .ops-logout[hidden]{display:none!important}.ops-nav .ops-logout:disabled{opacity:.55;cursor:wait}
+.ops-nav .ops-logout-error{grid-column:1/-1;margin:0;padding:5px;font-size:12px;color:#a32222}.ops-nav .ops-logout-error[hidden]{display:none!important}
+@media(min-width:1000px){.ops-nav .ops-logout{min-height:46px;min-width:82px;font-size:13px}}
+@media(max-width:600px){body.pos-mode .desk-chrome .ops-nav a,.desk-chrome .ops-nav a{font-size:13px}}
+.purchase-summary{display:block;border:1px solid #dce3ed;background:#fff;padding:7px 9px;margin:8px 0;border-radius:6px;color:#102238;text-decoration:none;font:12px/1.4 system-ui,sans-serif}
+.purchase-summary strong{font-size:13px}.purchase-summary ul{margin:4px 0 0;padding:0;list-style:none}.purchase-summary .urgent{color:#a32222}
+body.cafe-staff .menu-categories{top:49px}
+@media(min-width:800px){.ops-nav{padding-left:max(8px,calc((100vw - 1200px)/2));padding-right:max(8px,calc((100vw - 1200px)/2))}}
+
+.desk-chrome{position:sticky;top:0;z-index:45;background:#fff;box-shadow:0 1px 3px #17324d14}.desk-chrome .ops-nav{position:static;padding:4px 8px}.ops-nav a{min-height:44px}.work-bar{padding:3px 8px;gap:4px;background:#eff3f6}.work-bar button,.work-bar a{min-height:44px;padding:5px 8px;font-size:12px}.work-bar .active-people{font-size:clamp(10px,.8vw,12px);line-height:1.35;padding:2px 0;display:flex;flex-wrap:wrap;gap:3px 10px}.work-bar .work-person{margin:0;white-space:nowrap;font-variant-numeric:tabular-nums}.work-bar .active-people:before{content:'НА СМЕНЕ';font-size:9px;color:#556a7e;align-self:center}.work-bar>span:not(.work-error){font-size:11px}.work-bar .work-error:empty{display:none}.work-bar .work-error{font-size:11px}.work-bar .pos-toggle{margin-left:auto}
+body.cafe-staff .menu-categories{top:var(--desk-chrome-height,100px)}
+body.pos-mode .desk-chrome .ops-nav{height:auto}body.pos-mode .desk-chrome .ops-nav a{min-height:46px;font-size:18px}body.pos-mode .work-bar button,body.pos-mode .work-bar a{font-size:12px!important;min-height:44px!important}body.pos-mode .work-bar .active-people{font-size:clamp(10px,.8vw,12px)}
+@media(max-width:600px){.work-bar a{font-size:11px}.work-bar>span:not(.work-error){max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.work-bar{gap:3px}.work-bar button,.work-bar a{padding:4px 6px}.work-bar .active-people{font-size:10px}}
+
+.work-account{position:relative}.work-account>summary{display:flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;border:1px solid #a5bdc2;border-radius:6px;background:white;font-size:24px;cursor:pointer;list-style:none}.work-account>summary::-webkit-details-marker{display:none}.work-account>div{position:absolute;right:0;top:46px;min-width:190px;background:white;padding:6px;box-shadow:0 5px 24px #182a4233;border:1px solid #b7c7d5;border-radius:5px;z-index:70}.work-account>div a,.work-account>div button{width:100%;justify-content:flex-start}.work-account>div button{margin-top:5px}
+body.cafe-staff .cafe-add{min-height:44px!important;min-width:44px!important}body.cafe-staff .menu-item-bottom{gap:4px}body.cafe-staff .cart-controls button{min-height:44px!important;min-width:44px!important}body.cafe-staff .cafe-close{min-width:44px!important;min-height:44px!important}

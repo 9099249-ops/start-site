@@ -1,0 +1,25 @@
+[Unit]
+Description=START website and Telegram requests
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=start-site
+Group=start-site
+WorkingDirectory=/opt/start-site
+EnvironmentFile=/etc/start-site.env
+ExecStart=/opt/start-node/bin/node --dns-result-order=ipv6first --no-network-family-autoselection /opt/start-site/server/server.mjs
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+StateDirectory=start-site
+StateDirectoryMode=0700
+UMask=0077
+Environment=BOOKING_DB=/var/lib/start-site/bookings.sqlite
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

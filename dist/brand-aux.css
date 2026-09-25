@@ -1,0 +1,8 @@
+/* Branding for operational and game interfaces; controls remain unchanged. */
+body{--brand-ink:#0a2940;--brand-accent:#ffca48}
+body>header{background:#fff;color:var(--brand-ink);border-bottom:1px solid #dce4eb}
+body>header a{color:var(--brand-ink)}
+.admin-brand{display:flex;align-items:center;gap:14px}.admin-brand img{width:180px;height:60px;object-fit:contain}.admin-brand span{color:#536475}
+.site-header{background:#fff}.site-header .brand{display:block;width:190px;height:64px;background:url('/assets/start-logo-horizontal.webp') center/contain no-repeat}.site-header .brand>svg,.site-header .brand>span{visibility:hidden;position:absolute;width:1px;height:1px;overflow:hidden}
+.site-header .text-button{color:var(--brand-ink)}.menu-card .primary,.result .primary{background:var(--brand-accent);color:var(--brand-ink)}
+@media(max-width:600px){.admin-brand{gap:6px}.admin-brand img{width:120px;height:44px}.admin-brand span{font-size:10px}.site-header .brand{width:130px;height:45px}}

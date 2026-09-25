@@ -1,0 +1,18 @@
+(()=>{
+ 'use strict';
+ const staffMenu=location.pathname.startsWith('/cafe/')&&new URLSearchParams(location.search).get('staff')==='1';
+ if(!location.pathname.startsWith('/admin')&&!staffMenu)return;
+ const nav=document.createElement('nav');nav.className='ops-nav';nav.setAttribute('aria-label','Разделы станции');
+ const active=location.pathname.includes('/purchase')?'purchase':location.pathname.includes('/cafe')?'cafe':'rental';
+ for(const [id,label,url] of [['rental','Прокат','/admin/'],['cafe','Кафе','/admin/cafe/'],['purchase','Закупка','/admin/purchase/']]){const a=document.createElement('a');a.textContent=label;a.href=url;if(id===active)a.setAttribute('aria-current','page');nav.append(a);}const chrome=document.createElement('div');chrome.className='desk-chrome';chrome.append(nav);document.body.prepend(chrome);new ResizeObserver(()=>document.documentElement.style.setProperty('--desk-chrome-height',chrome.offsetHeight+'px')).observe(chrome);
+ const logout=document.querySelector('#logout')||document.createElement('button');logout.id='logout';logout.type='button';logout.textContent='ВЫХОД';logout.className='ops-logout';logout.hidden=true;logout.title='Выйти из учётной записи';nav.append(logout);
+ const logoutError=document.createElement('p');logoutError.className='ops-logout-error';logoutError.hidden=true;logoutError.setAttribute('role','alert');nav.append(logoutError);
+ logout.onclick=async()=>{if(logout.disabled)return;logout.disabled=true;logoutError.hidden=true;try{const r=await fetch('/api/admin/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',cache:'no-store'});if(!r.ok&&r.status!==401)throw Error('Не удалось выйти. Повторите попытку.');location.replace('/admin/');}catch{logoutError.textContent='Не удалось выйти. Проверьте соединение и повторите.';logoutError.hidden=false;logout.disabled=false;}};
+ async function logoutVisibility(){if(document.hidden)return;try{const r=await fetch('/api/admin/session',{cache:'no-store'});if(r.ok){const session=await r.json();logout.hidden=!session.user;}}catch{}}
+ logoutVisibility();document.addEventListener('visibilitychange',logoutVisibility);
+ const workspace=document.querySelector('#workspace');if(!workspace)return;
+ const block=document.createElement('a');block.href='/admin/purchase/';block.className='purchase-summary';block.hidden=true;block.setAttribute('aria-label','Нужно купить — открыть закупку');(document.querySelector('#purchase-home')||workspace).append(block);
+ let running=false,last=0;
+ async function summary(){if(workspace.hidden||document.hidden||running||Date.now()-last<20000)return;running=true;try{const r=await fetch('/api/admin/inventory/summary',{cache:'no-store'});if(!r.ok){block.hidden=true;return;}const d=await r.json();block.replaceChildren();const title=document.createElement('strong');title.textContent=d.items.length?'🛒 Нужно купить — '+d.items.length+' поз.':'Сейчас закупка не требуется';block.append(title);if(d.items.length){const list=document.createElement('ul');for(const i of d.items.slice(0,4)){const li=document.createElement('li');li.classList.toggle('urgent',i.urgent);li.textContent=i.name+' — '+(i.buyQuantity?'купить '+i.buyQuantity.replace('.',',')+' '+i.unit:'количество уточнить');list.append(li);}block.append(list);if(d.items.length>4){const more=document.createElement('small');more.textContent='Все позиции →';block.append(more);}}block.hidden=false;last=Date.now();}catch{block.hidden=true;}finally{running=false;}}
+ new MutationObserver(()=>{if(workspace.hidden)block.hidden=true;else summary();}).observe(workspace,{attributes:true,attributeFilter:['hidden']});summary();setInterval(summary,60000);document.addEventListener('visibilitychange',summary);
+})();

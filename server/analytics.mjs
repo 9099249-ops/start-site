@@ -1,0 +1,1 @@
+export function analyticsTag(preview=false){const id=process.env.METRIKA_COUNTER_ID||'';return !preview&&/^[1-9]\d{4,11}$/.test(id)?'<script defer src="/analytics.js" data-counter="'+id+'"></script>':'';}
