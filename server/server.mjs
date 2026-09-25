@@ -1,4 +1,5 @@
 import {workforceHandler} from './workforce.mjs';
+import {PrintStore,printHandler} from './print.mjs';
 import {InventoryStore,inventoryHandler} from './inventory.mjs';
 import {WaterWeather} from './water.mjs';
 import {CafeStore,cafeHandler} from './cafe.mjs';
@@ -19,6 +20,9 @@ const root = path.resolve(fileURLToPath(new URL('../dist/',import.meta.url)));
 const port = Number(process.env.PORT || 4173);
 const origin = process.env.SITE_ORIGIN || `http://127.0.0.1:${port}`;
 const adminStore=process.env.BOOKING_DB?new AdminStore(process.env.BOOKING_DB):null;
+const printStore=adminStore?new PrintStore(adminStore):null;
+if(adminStore)adminStore.printStore=printStore;
+const handlePrint=printHandler(printStore,adminStore,origin);
 const contentStore=adminStore?new ContentStore(adminStore.db,path.join(path.dirname(process.env.BOOKING_DB),'media')):null;
 const handleContent=contentHandler(contentStore,adminStore,origin,path.join(root,'index.html'));
 const handleWorkforce=workforceHandler(adminStore?.workforce,adminStore,origin);
@@ -39,6 +43,7 @@ const types = {'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-
 http.createServer(async(req,res)=>{
   try {
     const url = new URL(req.url,origin);
+    if(await handlePrint(req,res,url))return;
     if(await handleWorkforce(req,res,url))return;
     if(await handleInventory(req,res,url))return;
     if(await handleCafe(req,res,url))return;

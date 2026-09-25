@@ -19,6 +19,13 @@ server {
     add_header X-Content-Type-Options nosniff always;
 
     if ($host = www.spotsup.ru) { return 301 https://spotsup.ru$request_uri; }
+    location ^~ /api/print-agent/v1/ {
+        client_max_body_size 256k;
+        proxy_pass http://127.0.0.1:4173;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
     location ^~ /api/admin/cafe/ {
         client_max_body_size 256k;
         proxy_pass http://127.0.0.1:4173;

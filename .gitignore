@@ -29,6 +29,7 @@ outputs/
 node_modules/
 __pycache__/
 *.pyc
+start-print-agent/config.json
 .DS_Store
 Thumbs.db
 game-src/dist/

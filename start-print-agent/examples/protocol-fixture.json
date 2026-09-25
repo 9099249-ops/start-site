@@ -1,0 +1,19 @@
+{
+  "payload": {
+    "type": "shift_report",
+    "report_id": "test-report-1",
+    "shift_id": "42",
+    "date": "2026-09-25",
+    "preliminary": true,
+    "revision": 1,
+    "total": "80000.01",
+    "transfers": [
+      {
+        "recipient": "Иван",
+        "amount": "3500.00"
+      }
+    ]
+  },
+  "canonical": "{\"date\":\"2026-09-25\",\"preliminary\":true,\"report_id\":\"test-report-1\",\"revision\":1,\"shift_id\":\"42\",\"total\":\"80000.01\",\"transfers\":[{\"amount\":\"3500.00\",\"recipient\":\"Иван\"}],\"type\":\"shift_report\"}",
+  "sha256": "798783969335826bcf57cefde088351b637d08ea907ea3c68602564d8b2c8c0c"
+}

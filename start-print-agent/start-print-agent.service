@@ -1,0 +1,38 @@
+[Unit]
+Description=Cafe START durable print agent
+Wants=network-online.target cups.service
+After=network-online.target cups.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=start-print-agent
+Group=start-print-agent
+SupplementaryGroups=lp
+Environment=PYTHONUNBUFFERED=1
+Environment=TZ=Europe/Moscow
+ExecStart=/usr/bin/python3 /opt/start-print-agent/main.py serve
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+StateDirectory=start-print-agent
+StateDirectoryMode=0700
+LogsDirectory=start-print-agent
+LogsDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/start-print-agent /var/log/start-print-agent
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=100
+
+[Install]
+WantedBy=multi-user.target

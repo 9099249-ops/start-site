@@ -1,0 +1,11 @@
+{
+  "type": "shift_report",
+  "report_id": "TEST-SHIFT-001-v1",
+  "shift_id": "ТЕСТ — НЕ РЕАЛЬНЫЕ РАСЧЁТЫ",
+  "date": "2026-09-25",
+  "total": 1500,
+  "transfers": [
+    {"recipient": "ТЕСТ — получатель 1", "amount": 1000},
+    {"recipient": "ТЕСТ — получатель 2", "amount": 500}
+  ]
+}

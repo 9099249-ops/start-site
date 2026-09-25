@@ -1,0 +1,13 @@
+{
+  "type": "cafe_order",
+  "order_id": "TEST-002",
+  "customer_name": "Иван",
+  "fulfillment": "lounge",
+  "table": "7",
+  "items": [
+    {"name": "Капучино", "qty": 1},
+    {"name": "Сырники", "qty": 1, "price": 400, "modifiers": ["Сгущёнка"]}
+  ],
+  "comment": "Без сахара",
+  "total": 400
+}

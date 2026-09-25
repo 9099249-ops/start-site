@@ -83,7 +83,7 @@ export class CafeStore{
  }
  quote(b,u,now=Date.now()){const {details}=this.resolve(b,u,now),q=this.calculate(b.items,details.fulfillment);this.stock.check(q.items);return {...q,prepMinutes:details.prepMinutes};}
  limit(key,now,max){const k=hash(key);const row=this.db.prepare('SELECT * FROM cafe_limits WHERE key=?').get(k);if(row&&row.expires>now&&row.count>=max)fail('Слишком много заказов. Повторите немного позже.',429);this.db.prepare('INSERT INTO cafe_limits VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=CASE WHEN expires<=? THEN 1 ELSE count+1 END,expires=CASE WHEN expires<=? THEN excluded.expires ELSE expires END').run(k,now+600000,now,now);}
- event(orderId,kind,u,body,now,requestId=null){return Number(this.db.prepare('INSERT INTO cafe_order_events(order_id,kind,actor,body,created,request_id) VALUES(?,?,?,?,?,?)').run(orderId,kind,u?.id||null,JSON.stringify(body),now,requestId).lastInsertRowid);}
+ event(orderId,kind,u,body,now,requestId=null){const id=Number(this.db.prepare('INSERT INTO cafe_order_events(order_id,kind,actor,body,created,request_id) VALUES(?,?,?,?,?,?)').run(orderId,kind,u?.id||null,JSON.stringify(body),now,requestId).lastInsertRowid);this.admin.printStore?.cafeEvent(id,u,now);return id;}
  create(b,u=null,ip='local',now=Date.now()){
   if(!/^[a-f0-9-]{36}$/.test(b.requestId||''))fail('Обновите форму заказа.');const fingerprint=hash(stable(b));
   return this.transaction(()=>{const old=this.db.prepare('SELECT * FROM cafe_orders WHERE request_id=?').get(b.requestId);if(old){if(old.fingerprint!==fingerprint)fail('Этот запрос уже использован. Обновите заказ.',409);return {...this.receipt(old),duplicate:true};}
