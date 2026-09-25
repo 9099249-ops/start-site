@@ -122,6 +122,18 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn('+ Добавка 61',lines)
         self.assertIn(payload['comment'],lines)
 
+    def test_location_correction_is_not_a_second_food_order(self):
+        payload = {'type': 'cafe_order', 'order_id': 'location-1', 'order_number': '12',
+                   'ticket_kind': 'LOCATION', 'items': [], 'comment': 'Стол 7', 'total': '0.00'}
+        self.agent.store.receive_envelope(envelope(payload))
+        self.agent.store.receive_envelope(envelope(payload))
+        self.assertEqual(len(self.agent.store.pending()), 1)
+        lines = main.receipt_lines(payload, main.now())
+        self.assertIn('УТОЧНЕНИЕ МЕСТА № 12', lines)
+        self.assertIn('Стол 7', lines)
+        self.assertNotIn('ИТОГО: 0.00 ₽', lines)
+        self.assertTrue(any('НЕ НОВЫЙ ЗАКАЗ' in line for line in lines))
+
     def test_invalid_report_metadata_rejected_before_rendering(self):
         for field,value in [('revision','2'),('revision',True),('preliminary','false'),
                             ('as_of','not-a-date'),('as_of','2026-09-25T12:00:00')]:

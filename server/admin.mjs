@@ -145,8 +145,9 @@ export class AdminStore{
   const sql=`SELECT r.*,u.login issuedBy,v.login returnedBy,(SELECT method FROM payments p WHERE p.rental_id=r.id ORDER BY id LIMIT 1) method,(SELECT coalesce(sum(amount),0) FROM payments p WHERE p.rental_id=r.id) paid FROM rentals r JOIN admin_users u ON u.id=r.created_by LEFT JOIN admin_users v ON v.id=r.returned_by`;
   const active=this.db.prepare(sql+' WHERE r.returned IS NULL ORDER BY r.departed').all();
   const returned=this.db.prepare(sql+" WHERE r.returned IS NOT NULL AND date(r.returned/1000,'unixepoch','+3 hours')=? ORDER BY r.returned DESC").all(day);
+  const dayRentals=this.db.prepare(sql+" WHERE substr(r.departed,1,10)<=? AND (r.returned IS NULL OR date(r.returned/1000,'unixepoch','+3 hours')>=?) ORDER BY r.departed DESC,r.id DESC").all(day,day);
   const totals=this.db.prepare('SELECT method,sum(amount) amount FROM payments WHERE day=? GROUP BY method').all(day);
-  return {user,day,now:Date.now(),nearby:nearbyBookings(this),active,returned,totals,fleet:fleet.map(([id,label,total])=>({id,label,total,available:total-active.filter(r=>r.equipment===id).reduce((n,r)=>n+r.quantity,0)}))};
+  return {user,day,now:Date.now(),nearby:nearbyBookings(this),active,returned,dayRentals,totals,fleet:fleet.map(([id,label,total])=>({id,label,total,available:total-active.filter(r=>r.equipment===id).reduce((n,r)=>n+r.quantity,0)}))};
  }
  shiftSettings(user){if(user.role!=='admin')fail('Только администратор.',403);return this.db.prepare('SELECT * FROM salary_settings WHERE id=1').get();}
  saveShiftSettings(b,user){const s=this.workforce.settings();return this.workforce.saveSettings({revision:b.revision??s.revision,fixedCents:b.fixedCents,bonusPercent:b.bonusPercent,hourlyCents:s.hourly_cents,payMode:s.pay_mode,distribution:s.distribution},user);}

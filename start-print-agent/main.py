@@ -72,7 +72,7 @@ def validate(data):
         raise ValueError('non-empty order_id/report_id required')
     if kind == 'cafe_order':
         items = data.get('items')
-        if not isinstance(items, list) or not 1 <= len(items) <= 100:
+        if not isinstance(items, list) or not (0 if data.get('ticket_kind') == 'LOCATION' else 1) <= len(items) <= 100:
             raise ValueError('1..100 items required')
         for item in items:
             label(item['name'], 200)
@@ -93,7 +93,7 @@ def validate(data):
             label(data['comment'], 1500)
         if 'order_number' in data:
             label(data['order_number'], 128)
-        if 'ticket_kind' in data and data['ticket_kind'] not in ('NEW', 'ADD', 'CANCELLED'):
+        if 'ticket_kind' in data and data['ticket_kind'] not in ('NEW', 'ADD', 'CANCELLED', 'LOCATION'):
             raise ValueError('invalid ticket_kind')
     else:
         datetime.strptime(data['date'], '%Y-%m-%d')
@@ -141,7 +141,7 @@ def receipt_lines(data, received, reprint=False):
             lines += ['Снимок: ' + stamp.strftime('%d.%m.%Y %H:%M') + ' МСК']
         lines += ['', 'Отчёт: ' + data['report_id']]
     else:
-        caption = {'ADD': 'ДОЗАКАЗ', 'CANCELLED': 'ОТМЕНА ЗАКАЗА'}.get(data.get('ticket_kind'), 'ЗАКАЗ')
+        caption = {'ADD': 'ДОЗАКАЗ', 'CANCELLED': 'ОТМЕНА ЗАКАЗА', 'LOCATION': 'УТОЧНЕНИЕ МЕСТА'}.get(data.get('ticket_kind'), 'ЗАКАЗ')
         lines += [caption + ' № ' + data.get('order_number', data['order_id']), '']
         if data.get('table'):
             lines += ['Стол: ' + data['table']]
@@ -156,7 +156,10 @@ def receipt_lines(data, received, reprint=False):
             if 'price' in item:
                 line += ' — ' + item['price'] + ' ₽'
             lines += [line] + ['+ ' + m for m in item.get('modifiers', [])] + ['']
-        lines += ['ИТОГО: ' + data['total'] + ' ₽']
+        if data.get('ticket_kind') == 'LOCATION':
+            lines += ['НЕ НОВЫЙ ЗАКАЗ. Изменилось только место.']
+        else:
+            lines += ['ИТОГО: ' + data['total'] + ' ₽']
         if data.get('comment'):
             lines += ['', 'Комментарий:', data['comment']]
     lines += ['', 'Получено: ' + received, 'Печать: ' + now()]

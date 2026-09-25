@@ -67,7 +67,7 @@ export class PrintStore {
  cafeEvent(eventId,u,now=Date.now()){
   // Called inside the cafe transaction: a committed order cannot lose its ticket.
   if(!this.enabled())return;
-  const e=this.db.prepare('SELECT * FROM cafe_order_events WHERE id=?').get(eventId);if(!['NEW','ADD','CANCELLED'].includes(e?.kind))return;
+  const e=this.db.prepare('SELECT * FROM cafe_order_events WHERE id=?').get(eventId);if(!['NEW','ADD','CANCELLED','LOCATION'].includes(e?.kind))return;
   const r=this.db.prepare('SELECT * FROM cafe_orders WHERE id=?').get(e.order_id),d=JSON.parse(r.details),batch=JSON.parse(e.body);
   if(e.kind==='CANCELLED'){
    const prior=this.db.prepare("SELECT j.* FROM print_jobs j JOIN print_documents d ON d.id=j.document_id WHERE json_extract(d.snapshot,'$.orderId')=?").all(r.id);

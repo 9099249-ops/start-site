@@ -22,3 +22,5 @@ fieldset{border:1px solid #d9e2e8;border-radius:5px;margin:7px 0;padding:8px}dia
 @media(min-width:1000px){#order-list{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px}.order-line .order-next{font-size:14px!important}.tabs{max-width:620px}}
 
 .desk-ready>header{display:none}
+
+.place-assignment{display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin:8px 0}.place-assignment label{flex:1;min-width:140px}.place-assignment button{min-height:44px}

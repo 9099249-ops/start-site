@@ -7,6 +7,11 @@ import {extendRental,undoReturn,deskSearch,nearbyBookings} from './rental-action
 import Desk from '../dist/admin/desk-utils.js';
 const now=Date.parse('2026-09-25T09:00:00Z'),stamp=t=>new Date(t+10800000).toISOString().slice(0,16);
 function fixture(t){const s=new AdminStore(':memory:');s.setupToken('test');s.setup({token:'test',adminPassword:'test-admin-password',staffPassword:'test-staff-password'},'test');const u={id:2,role:'staff'};t.after(()=>s.close());return {s,u,create:(more={})=>s.create({requestId:randomUUID(),equipment:'sup',quantity:1,name:'Иван Петров',phone:'+7 (916) 123-88-22',departed:stamp(now),expectedReturn:stamp(now+3600000),amount:'1000',method:'cash',...more},u,now)};}
+
+test('Day history includes active, returned and overnight rentals without losing older returns',t=>{
+ const {s,u,create}=fixture(t),active=create(),returned=create(),overnight=create();s.returned(returned,u,now+5000);s.db.prepare('UPDATE rentals SET departed=? WHERE id=?').run('2026-09-24T23:50',overnight);
+ const today=s.dashboard('2026-09-25',u);assert.deepEqual(new Set(today.dayRentals.map(r=>r.id)),new Set([active,returned,overnight]));assert.equal(today.returned.length,1);assert.deepEqual(s.dashboard('2026-09-24',u).dayRentals.map(r=>r.id),[overnight]);assert.ok(!s.dashboard('2026-09-26',u).dayRentals.some(r=>r.id===returned));
+});
 test('Desk search normalizes full Russian phones, preserves suffixes starting 7/8, matches case and categories',()=>{
  const r={id:17,name:'Иван Петров',phone:'+7 (916) 123-88-22',equipment:'sup'};
  for(const q of ['8822','+7 (916) 123-88-22','8 916 123 88 22','9161238822','ПЕТРОВ','иван','SUP','17'])assert.equal(Desk.matches(r,q),true,q);
