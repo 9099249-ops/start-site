@@ -9,7 +9,7 @@ import {Worker} from 'node:worker_threads';
 import {AdminStore} from './admin.mjs';
 import {CafeStore} from './cafe.mjs';
 import {SmsStore} from './sms.mjs';
-import {distribute,workforceHandler} from './workforce.mjs';
+import {basePayCents,distribute,workforceHandler} from './workforce.mjs';
 import http from 'node:http';
 const day='2026-09-25',at=t=>Date.parse(day+'T'+t+':00+03:00'),u={id:1,role:'admin'},employees=Array.from({length:5},(_,i)=>({id:i+2,role:'staff'}));
 function fixture(file=':memory:'){const a=new AdminStore(file);if(!a.configured())a.db.exec("INSERT INTO admin_users VALUES(1,'admin','admin','unused'),(2,'ivan','staff','unused'),(3,'anna','staff','unused'),(4,'sergey','staff','unused'),(5,'olga','staff','unused'),(6,'oleg','staff','unused')");const w=a.workforce;w.env={TELEGRAM_BOT_TOKEN:'fake',TELEGRAM_CHAT_ID:'1',SITE_ORIGIN:'https://spotsup.ru'};a.db.prepare("UPDATE admin_config SET value=? WHERE key='workforce_reports_from'").run(day);const messages=[];w.request=async(url,b)=>{messages.push(JSON.parse(b.body));return {ok:true,json:async()=>({ok:true})};};return {a,w,messages,close:()=>a.close()};}
@@ -53,4 +53,41 @@ check('Work: invalid roles are rejected and new full administrators use normal l
  assert.throws(()=>f.w.savePerson({name:'Ошибка',login:'bad',password:'test-person-password',role:'superuser'},u),/роль/);
  f.w.savePerson({name:'Администратор',login:'second',password:'test-admin-password',role:'admin'},u);
  assert.equal(f.a.user(f.a.login({login:'second',password:'test-admin-password'},'test')).role,'admin');
+});
+
+check('Work: 2500 per 12 hours is exact; round once after worked time is summed',f=>{
+ const settings={pay_mode:'prorated',fixed_cents:250000,full_shift_minutes:720};
+ for(const [ms,cents] of [[0,0],[1,0],[60000,347],[3600000,20833],[6*3600000,125000],[12*3600000,250000],[13*3600000,270833]])assert.equal(basePayCents(settings,ms),cents);
+ f.w.saveSettings({revision:0,fixedCents:250000,hourlyCents:0,fullShiftMinutes:720,bonusPercent:5,payMode:'prorated',distribution:'hours'},u,at('08:00'));
+ let s=start(f,employees[0],'11:00');end(f,employees[0],s,'11:30');s=start(f,employees[0],'20:00');end(f,employees[0],s,'20:30');
+ assert.equal(f.w.calculate(day,at('21:00'),0).employees[0].fixed_cents,20833);
+});
+check('Work: 11 and 20 starts receive time-weighted base and bonus; closed snapshot stays fixed',f=>{
+ const rules={revision:0,fixedCents:250000,hourlyCents:0,fullShiftMinutes:720,bonusPercent:5,payMode:'prorated',distribution:'hours'};
+ f.w.saveSettings(rules,u,at('08:00'));const first=start(f,employees[0],'11:00'),late=start(f,employees[1],'20:00');
+ const shift=f.a.openShift({day,cashStartCents:0,employeeIds:[2,3]},u,at('20:01'));end(f,employees[0],first,'23:00');end(f,employees[1],late,'23:00');
+ const c=f.w.calculate(day,at('23:01'),8000000);assert.deepEqual(c.employees.map(e=>[e.fixed_cents,e.bonus_cents,e.salary_cents]),[[250000,320000,570000],[62500,80000,142500]]);
+ assert.equal(c.employees.reduce((n,e)=>n+e.bonus_cents,0),400000);
+ f.a.closeShift({shiftId:shift,cashEndCents:8000000,cashlessCents:0},u,at('23:02'));
+ f.w.saveSettings({...rules,revision:1,fixedCents:999999,fullShiftMinutes:600},u,at('23:03'));
+ const closed=f.w.calculate(day,at('23:04'));assert.equal(closed.settings.full_shift_minutes,720);assert.equal(closed.settings.fixed_cents,250000);assert.deepEqual(closed.employees.map(e=>e.salary_cents),[570000,142500]);assert.match(f.w.reportText(closed),/за 12 ч/);
+});
+check('Work: full shift duration validates and legacy setting requests preserve the duration',f=>{
+ const rules={revision:0,fixedCents:250000,hourlyCents:0,fullShiftMinutes:720,bonusPercent:5,payMode:'prorated',distribution:'hours'};
+ for(const fullShiftMinutes of [0,-1,0.5,1441,null,'720'])assert.throws(()=>f.w.saveSettings({...rules,fullShiftMinutes},u));
+ assert.equal(f.w.settings().revision,0);assert.throws(()=>f.w.saveSettings(rules,employees[0]),e=>e.status===403);
+ f.w.saveSettings({...rules,fullShiftMinutes:600},u);const {fullShiftMinutes,...oldClient}=rules;f.w.saveSettings({...oldClient,revision:1,payMode:'fixed'},u);assert.equal(f.w.settings().full_shift_minutes,600);
+});
+test('Work: existing salary settings migrate once without changing old day snapshots',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'start-salary12-')),file=join(dir,'test.sqlite');let f=fixture(file);
+ try{
+  const old={...f.w.settings()};delete old.full_shift_minutes;
+  f.a.db.prepare('INSERT INTO work_day_settings(day,settings_json,created_at) VALUES(?,?,?)').run(day,JSON.stringify(old),at('08:00'));
+  f.a.db.exec('ALTER TABLE salary_settings DROP COLUMN full_shift_minutes');f.close();f=fixture(file);
+  assert.equal(f.w.settings().full_shift_minutes,720);assert.equal(f.w.settings().pay_mode,'fixed');
+  assert.deepEqual(f.w.daySettings(day),old);
+  f.w.saveSettings({revision:0,fixedCents:250000,hourlyCents:0,fullShiftMinutes:720,bonusPercent:5,payMode:'prorated',distribution:'hours'},u,at('09:00'));
+  const session=start(f,employees[0],'11:00');end(f,employees[0],session,'12:00');assert.equal(f.w.calculate(day,at('13:00'),0).employees[0].fixed_cents,250000);
+  f.close();f=fixture(file);assert.equal(f.w.settings().pay_mode,'prorated');assert.equal(f.w.settings().full_shift_minutes,720);assert.equal(f.w.settings().revision,1);assert.deepEqual(f.w.daySettings(day),old);
+ }finally{f.close();rmSync(dir,{recursive:true,force:true});}
 });
