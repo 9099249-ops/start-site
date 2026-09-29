@@ -25,3 +25,14 @@ body.cafe-staff{font:13px/1.35 system-ui,sans-serif}
 @media(pointer:coarse){.cafe-staff .cafe-search input,.cafe-staff dialog input,.cafe-staff dialog select,.cafe-staff dialog textarea{font-size:16px}}
 
 .cafe-staff .menu-item .cafe-stock-hint{grid-column:1;grid-row:3;font-size:11px;line-height:1.3;color:#405968;margin:2px 0}.cafe-staff .menu-item-bottom{grid-row:1/4}.cart-reset-actions{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.cart-reset-actions button{min-height:44px!important}#place-later{font-size:12px}#undo-clear-cart[hidden]{display:none!important}
+
+/* Staff POS shares the existing checkout form with mobile. */
+@media(min-width:1100px){body.cafe-staff.cafe-pos-cart main{margin-right:400px;max-width:none}body.cafe-staff.cafe-pos-cart #cart-dialog{position:fixed;top:calc(var(--desk-chrome-height,120px) + 10px);right:12px;left:auto;bottom:12px;margin:0;width:370px;max-width:370px;max-height:calc(100dvh - var(--desk-chrome-height,120px) - 25px);border:1px solid #dce5ee;box-shadow:none;padding:14px}body.cafe-staff.cafe-pos-cart #cart-button{display:none}body.cafe-staff.cafe-pos-cart #menu-list .menu-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+#checkout-contact{margin:0 0 10px}#checkout-contact>summary{display:none}.cafe-staff #checkout-contact>summary{display:list-item;cursor:pointer;padding:10px 0;min-height:44px;font-size:12px;color:#596672}.cafe-staff #checkout-contact[open]{border-bottom:1px solid #dce0e4;padding-bottom:8px}
+
+.cafe-configure{font:inherit;font-size:12px;border:1px solid var(--cafe-line);background:white;color:inherit;border-radius:6px;min-height:44px;padding:6px 8px;cursor:pointer}
+.cart-controls .cart-quantity{width:64px;max-width:64px;min-height:40px;text-align:center;padding:6px;flex:0 0 64px}
+.cart-line-actions{display:flex;gap:8px;margin-top:8px}.cart-line-actions button{font:inherit;font-size:12px;min-height:36px;border:1px solid var(--cafe-line);background:white;border-radius:6px;padding:6px 10px;cursor:pointer}.cart-remove{color:#9e3026}
+.cafe-legacy-pending{border:1px solid #b78128;padding:12px;border-radius:8px;margin:12px 0;background:#fff6df}.cafe-legacy-pending button{min-height:44px;margin:4px 8px 4px 0}.cafe-legacy-pending p{font-size:13px}
+@media(max-width:700px){.cafe-staff .menu-item-bottom{display:grid;grid-template-columns:auto 44px;gap:4px 8px}.cafe-staff .menu-item-bottom .cafe-configure{grid-column:1/-1}.cart-line-actions button{min-height:44px}}

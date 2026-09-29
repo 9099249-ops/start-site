@@ -3,7 +3,7 @@
  const $=s=>document.querySelector(s),el=(tag,value,cls)=>{const e=document.createElement(tag);if(value!==undefined)e.textContent=value;if(cls)e.className=cls;return e;};
  const q=v=>v===null||v===undefined?'неизвестно':String(v).replace('.',','),when=n=>new Date(n).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
  const types={PURCHASE:'Закупка',RECEIPT:'Приход',WRITE_OFF:'Списание',SET:'Точный остаток',EDIT:'Правка карточки',CREATE:'Новый товар',SALE:'Продажа кафе',RETURN:'Возврат отмены',SEED:'Первичные данные',ARCHIVE:'Архив',RESTORE:'Восстановление'};
- let user,catalog,tab='buy',chosen,requestId,next=null,historyVersion=0,historyRows=[],busy=false;
+ let user,catalog,tab=new URLSearchParams(location.search).get('settings')==='inventory'?'all':'buy',chosen,requestId,next=null,historyVersion=0,historyRows=[],busy=false;
  const normalize=s=>String(s||'').toLowerCase().replaceAll('ё','е').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
  function searchWords(s){let n=normalize(s);for(const [from,to] of [['фанта','fanta'],['корона','corona'],['кока кола','coca cola']])n=n.replace(from,to);return n;}
  async function request(url,body){const r=await fetch(url,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined,cache:'no-store'});let d;try{d=await r.json();}catch{throw Error('Сервер не ответил. Повторите запрос.');}if(!r.ok){if(r.status===401){user=null;$('#stock').hidden=true;$('#login').hidden=false;document.querySelectorAll('dialog[open]').forEach(x=>x.close());}throw Error(d.error||'Не удалось выполнить операцию.');}return d;}

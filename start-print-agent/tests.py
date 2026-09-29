@@ -89,6 +89,29 @@ class Tests(unittest.TestCase):
         self.assertEqual(new['reprint'],1)
         self.a.step(self.c); self.a.step(self.c)
         self.assertEqual(self.c.created,1)
+    def test_buzzer_is_part_of_cafe_job_only(self):
+        cfg = {**self.cfg, 'beep_hex': '1b420909', 'beep_cafe_only': True}
+        sound = bytes.fromhex(cfg['beep_hex']) + b'\x1dV\x01'
+        _, _, order = main.validate(ORDER)
+        self.assertTrue(main.render(order, main.now(), cfg).endswith(sound))
+        self.assertTrue(main.render({**order, 'ticket_kind': 'ADD'}, main.now(), cfg).endswith(sound))
+        for kind in ('CANCELLED', 'LOCATION'):
+            self.assertFalse(main.render({**order, 'ticket_kind': kind}, main.now(), cfg).endswith(sound))
+        report = json.loads((Path(__file__).parent/'examples/shift-report.json').read_text(encoding='utf-8'))
+        _, _, report = main.validate(report)
+        self.assertFalse(main.render(report, main.now(), cfg).endswith(sound))
+        self.assertFalse(main.render(order, main.now(), self.cfg).endswith(sound))
+        for source, count in [('admin', 1), ('site', 4)]:
+            ticket = {**order, 'order_source': source}
+            main.validate(ticket)
+            expected = bytes([27, 66, count, 9]) + b'\x1dV\x01'
+            for kind in ('NEW', 'ADD'):
+                self.assertTrue(main.render({**ticket, 'ticket_kind': kind}, main.now(), cfg).endswith(expected))
+            for kind in ('CANCELLED', 'LOCATION'):
+                self.assertFalse(main.render({**ticket, 'ticket_kind': kind}, main.now(), cfg).endswith(expected))
+        with self.assertRaises(ValueError):
+            main.validate({**order, 'order_source': 'invalid'})
+
     def test_report_cyrillic_raster(self):
         report=json.loads((Path(__file__).parent/'examples/shift-report.json').read_text(encoding='utf-8'))
         _,_,data=main.validate(report)

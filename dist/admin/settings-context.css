@@ -1,0 +1,12 @@
+.settings-back{display:inline-flex;align-items:center;min-height:44px;margin-bottom:8px;color:#254b73;text-decoration:none}
+body[data-settings-section] #cabinet>.tabs{display:none}
+body[data-settings-section=content] #workspace,body[data-settings-section=sms] #workspace{display:block}
+body[data-settings-section=content] #workspace[hidden],body[data-settings-section=sms] #workspace[hidden]{display:none}
+body[data-settings-section=content] #workspace>:not([data-desk-pane=more]),body[data-settings-section=sms] #workspace>:not([data-desk-pane=more]){display:none!important}
+body[data-settings-section=content] [data-desk-pane=more]>:not(#content-editor),body[data-settings-section=sms] [data-desk-pane=more]>:not(#sms-settings){display:none!important}
+body[data-settings-section=salary] #ops-content:has(#salary-form)>:not(details:has(#salary-form)),body[data-settings-section=people] #ops-content:has(#salary-form)>:not(details:has(#person-form)),body[data-settings-section=telegram] #ops-content:has(#salary-form)>:not(details:has(#telegram-form)){display:none}
+body[data-settings-section=salary] #print-current-report,body[data-settings-section=people] #print-current-report,body[data-settings-section=telegram] #print-current-report{display:none}
+body[data-settings-section=print] #ops-content:has(#salary-form){display:none}
+body[data-settings-section] .screen>h1{font-size:22px}
+
+body[data-settings-section] .page-heading>span{display:none}

@@ -95,6 +95,8 @@ def validate(data):
             label(data['order_number'], 128)
         if 'ticket_kind' in data and data['ticket_kind'] not in ('NEW', 'ADD', 'CANCELLED', 'LOCATION'):
             raise ValueError('invalid ticket_kind')
+        if 'order_source' in data and data['order_source'] not in ('admin', 'site'):
+            raise ValueError('invalid order_source')
     else:
         datetime.strptime(data['date'], '%Y-%m-%d')
         label(data['shift_id'], 128)
@@ -191,11 +193,16 @@ def render(data, received, cfg, reprint=False):
         out += b'\x1dv0\x00' + (width // 8).to_bytes(2, 'little') + (34).to_bytes(2, 'little')
         out += bytes(b ^ 255 for b in bits)
     out += b'\n\n\n'
+    # Confirmed on the station printer. Keep sound in the same durable print job.
+    audible = data['type'] == 'cafe_order' and data.get('ticket_kind') not in ('CANCELLED', 'LOCATION')
+    if cfg.get('beep_hex') and (not cfg.get('beep_cafe_only', False) or audible):
+        sound = bytes.fromhex(cfg['beep_hex'])
+        # ESC B n t: change only the repeat count, retaining the tested duration.
+        if audible and data.get('order_source') in ('admin', 'site') and len(sound) == 4 and sound[:2] == b'\x1bB':
+            sound = sound[:2] + bytes([1 if data['order_source'] == 'admin' else 4]) + sound[3:]
+        out += sound
     if cfg.get('cut', True):
         out += b'\x1dV\x01'
-    # Vendor-specific buzzer command must be confirmed on actual RP-100USE.
-    if cfg.get('beep_hex'):
-        out += bytes.fromhex(cfg['beep_hex'])
     return bytes(out)
 
 class Store:

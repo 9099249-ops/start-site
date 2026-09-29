@@ -1,0 +1,21 @@
+(()=>{'use strict';
+const $=s=>document.querySelector(s),el=(tag,text)=>{const e=document.createElement(tag);e.textContent=text;return e;};
+let state,dirty=false,busy=false;
+async function api(path,body){const r=await fetch('/api/admin/'+path,{cache:'no-store',...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});const d=await r.json();if(!r.ok)throw Error(d.error||'Не удалось выполнить запрос.');return d;}
+const groups=[
+ ['aQsi CS50', [['Подключение кассы','/admin/aqsi/?settings=aqsi']]],
+ ['Прокат',[['Порядок техники','#fleet-settings'],['Тарифы, часы работы и бронирование','/admin/?settings=content']]],
+ ['Кафе',[['Меню, категории, цены и добавки','/admin/cafe/?settings=menu'],['Приём заказов, доставка и время работы','/admin/cafe/?settings=settings'],['Столы, места, QR и NFC','/admin/cafe/?settings=places'],['Расход ингредиентов и остатки блюд','/admin/cafe-stock/?settings=stock'],['Выгрузка заказов','/admin/cafe/?settings=management']]],
+ ['Склад',[['Товары, категории, единицы и минимальные остатки','/admin/purchase/?settings=inventory']]],
+ ['Сотрудники и зарплата',[['График на неделю','/admin/schedule/'],['Создать сотрудника и выбрать роль','/admin/workforce/?settings=people'],['Учётные записи и пароли','/admin/accounts/?settings=accounts'],['Правила расчёта зарплаты','/admin/workforce/?settings=salary']]],
+ ['Уведомления и печать',[['Telegram владельцу','/admin/workforce/?settings=telegram'],['SMS Aero и напоминания','/admin/?settings=sms'],['Принтер и отчёты смены','/admin/workforce/?settings=print']]],
+ ['Сайт',[['Тексты, фотографии, контакты и SEO','/admin/?settings=content']]],
+ ['Дела',[['Пункты чек-листов открытия, работы и закрытия','/admin/tasks/?settings=tasks']]]
+];
+function render(){const out=$('#fleet-order');out.replaceChildren();state.items.forEach((item,i)=>{const row=el('li',''),name=el('span',item.label);row.append(name);for(const [offset,label] of [[-1,'↑'],[1,'↓']]){const b=el('button',label);b.type='button';b.disabled=busy||i+offset<0||i+offset>=state.items.length;b.setAttribute('aria-label',(offset<0?'Поднять: ':'Опустить: ')+item.label);b.onclick=()=>{[state.items[i],state.items[i+offset]]=[state.items[i+offset],state.items[i]];dirty=true;render();$('#fleet-message').textContent='Порядок изменён — нажмите «Сохранить порядок».';out.children[i+offset].querySelector(offset<0?'button':'button:last-child').focus();};row.append(b);}out.append(row);});$('#fleet-save').disabled=busy||!dirty;$('#fleet-reload').disabled=busy;}
+async function load(){state=await api('fleet-order');dirty=false;render();}
+$('#fleet-reload').onclick=async()=>{if(dirty&&!confirm('Отбросить несохранённый порядок и загрузить сохранённый?'))return;try{await load();$('#fleet-message').textContent='Список обновлён.';}catch(e){$('#fleet-message').textContent=e.message;}};
+$('#fleet-save').onclick=async()=>{if(busy||!dirty)return;busy=true;render();try{state=await api('fleet-order',{revision:state.revision,ids:state.items.map(x=>x.id)});dirty=false;$('#fleet-message').textContent='Порядок сохранён для всех сотрудников.';}catch(e){$('#fleet-message').textContent=e.message+' При ошибке связи обновите список, чтобы проверить сохранение.';}finally{busy=false;render();}};
+window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
+(async()=>{try{const {user}=await api('session');if(!user){$('#settings-notice').textContent='Войдите, чтобы открыть настройки.';$('#settings-login').hidden=false;return;}const root=$('#settings-groups');root.hidden=false;if(user.role!=='admin'){const link=el('a','Изменить свой пароль');link.href='/admin/accounts/?settings=accounts';root.append(link);$('#settings-notice').textContent='Общие настройки доступны администратору.';return;}$('#settings-notice').textContent='Все настройки станции в одном месте.';for(const [title,links] of groups){const box=el('section','');if(title==='Кафе')box.id='cafe';box.append(el('h2',title));for(const [label,url] of links){const a=el('a',label+' →');a.href=url;box.append(a);}root.append(box);}$('#fleet-settings').hidden=false;await load();if(location.hash==='#fleet-settings')$('#fleet-settings').scrollIntoView();}catch(e){$('#settings-notice').textContent=e.message;}})();
+})();

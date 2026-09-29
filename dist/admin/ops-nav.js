@@ -3,13 +3,31 @@
  const staffMenu=location.pathname.startsWith('/cafe/')&&new URLSearchParams(location.search).get('staff')==='1';
  if(!location.pathname.startsWith('/admin')&&!staffMenu)return;
  const nav=document.createElement('nav');nav.className='ops-nav';nav.setAttribute('aria-label','Разделы станции');
- const active=location.pathname.includes('/purchase')?'purchase':location.pathname.includes('/cafe')?'cafe':'rental';
- for(const [id,label,url] of [['rental','Прокат','/admin/'],['cafe','Кафе','/admin/cafe/'],['purchase','Закупка','/admin/purchase/']]){const a=document.createElement('a');a.textContent=label;a.href=url;if(id===active)a.setAttribute('aria-current','page');nav.append(a);}const chrome=document.createElement('div');chrome.className='desk-chrome';chrome.append(nav);document.body.prepend(chrome);new ResizeObserver(()=>document.documentElement.style.setProperty('--desk-chrome-height',chrome.offsetHeight+'px')).observe(chrome);
- const logout=document.querySelector('#logout')||document.createElement('button');logout.id='logout';logout.type='button';logout.textContent='ВЫХОД';logout.className='ops-logout';logout.hidden=true;logout.title='Выйти из учётной записи';nav.append(logout);
+ const settingsPage=location.pathname.includes('/settings')||new URLSearchParams(location.search).has('settings');
+ const active=settingsPage?'settings':location.pathname.includes('/tasks')?'tasks':location.pathname.includes('/purchase')?'purchase':location.pathname.includes('/cafe')?'cafe':'rental';
+ for(const [id,label,url] of [['rental','Прокат','/admin/'],['cafe','Кафе','/admin/cafe/'],['purchase','Закупка','/admin/purchase/'],['tasks','Дела','/admin/tasks/'],['settings','Настройки','/admin/settings/']]){const a=document.createElement('a');a.textContent=label;a.href=url;if(id===active)a.setAttribute('aria-current','page');nav.append(a);}const chrome=document.createElement('div');chrome.className='desk-chrome';chrome.append(nav);document.body.prepend(chrome);new ResizeObserver(()=>document.documentElement.style.setProperty('--desk-chrome-height',chrome.offsetHeight+'px')).observe(chrome);
+ if(settingsPage&&!location.pathname.includes('/settings')){const back=document.createElement('a');back.href='/admin/settings/';back.className='settings-back';back.textContent='← Все настройки';document.querySelector('main')?.prepend(back);}
+ const settingSection=new URLSearchParams(location.search).get('settings');
+ if(settingSection){
+  const css=document.createElement('link');css.rel='stylesheet';css.href='/admin/settings-context.css?v=1';document.head.append(css);
+  const contextScript=document.createElement('script');contextScript.src='/admin/settings-context.js?v=1';document.head.append(contextScript);
+ }
+ const brand=document.createElement('a');brand.className='pos-brand';brand.href='/admin/#work';brand.textContent='СТАРТ';nav.prepend(brand);const sync=document.createElement('span');sync.className='connection-state';sync.textContent='Подключение…';nav.append(sync);let syncedAt=0;document.addEventListener('desk-sync',e=>{if(e.detail.ok)syncedAt=Date.now();sync.classList.toggle('stale',!e.detail.ok);sync.textContent=e.detail.ok?'На связи':'Нет связи';sync.title=syncedAt?'Обновлено '+new Date(syncedAt).toLocaleTimeString('ru-RU'):'';});setInterval(()=>{if(syncedAt&&Date.now()-syncedAt>120000){sync.classList.add('stale');sync.textContent='Данные устарели';}},30000);
+ const logout=document.querySelector('#logout')||document.createElement('button');logout.id='logout';logout.type='button';logout.textContent='Выход';logout.className='ops-logout';logout.hidden=true;logout.title='Выйти из учётной записи';nav.append(logout);
  const logoutError=document.createElement('p');logoutError.className='ops-logout-error';logoutError.hidden=true;logoutError.setAttribute('role','alert');nav.append(logoutError);
  logout.onclick=async()=>{if(logout.disabled)return;logout.disabled=true;logoutError.hidden=true;try{const r=await fetch('/api/admin/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',cache:'no-store'});if(!r.ok&&r.status!==401)throw Error('Не удалось выйти. Повторите попытку.');location.replace('/admin/');}catch{logoutError.textContent='Не удалось выйти. Проверьте соединение и повторите.';logoutError.hidden=false;logout.disabled=false;}};
- async function logoutVisibility(){if(document.hidden)return;try{const r=await fetch('/api/admin/session',{cache:'no-store'});if(r.ok){const session=await r.json();logout.hidden=!session.user;}}catch{}}
- logoutVisibility();document.addEventListener('visibilitychange',logoutVisibility);
+
+ let cafeAuthenticated=false,cafeBusy=false,cafeRefreshAgain=false;
+ const cafeLink=nav.querySelector('a[href="/admin/cafe/"]');
+ async function refreshCafeBadge(){
+  if(!cafeAuthenticated||document.hidden)return;
+  if(cafeBusy){cafeRefreshAgain=true;return;}cafeBusy=true;
+  try{const r=await fetch('/api/admin/cafe/badge',{cache:'no-store'});if(r.status===401){cafeAuthenticated=false;cafeLink.textContent='Кафе';return;}if(!r.ok)return;const d=await r.json();if(!cafeAuthenticated)return;const count=d.count;cafeLink.textContent='Кафе'+(count?' · '+count:'');cafeLink.setAttribute('aria-label',count?'Кафе: заказов в работе — '+count:'Кафе');}
+  catch{}finally{cafeBusy=false;if(cafeRefreshAgain){cafeRefreshAgain=false;refreshCafeBadge();}}
+ }
+ setInterval(refreshCafeBadge,15000);document.addEventListener('station-updated',refreshCafeBadge);document.addEventListener('visibilitychange',refreshCafeBadge);
+ async function logoutVisibility(){if(document.hidden)return;try{const r=await fetch('/api/admin/session',{cache:'no-store'});if(r.ok){const session=await r.json();logout.hidden=!session.user;cafeAuthenticated=!!session.user;if(cafeAuthenticated)refreshCafeBadge();else cafeLink.textContent="Кафе";document.dispatchEvent(new CustomEvent('desk-sync',{detail:{ok:true}}));}else document.dispatchEvent(new CustomEvent('desk-sync',{detail:{ok:false}}));}catch{document.dispatchEvent(new CustomEvent('desk-sync',{detail:{ok:false}}));}}
+ logoutVisibility();setInterval(logoutVisibility,60000);document.addEventListener('visibilitychange',logoutVisibility);
  const workspace=document.querySelector('#workspace');if(!workspace)return;
  const block=document.createElement('a');block.href='/admin/purchase/';block.className='purchase-summary';block.hidden=true;block.setAttribute('aria-label','Нужно купить — открыть закупку');(document.querySelector('#purchase-home')||workspace).append(block);
  let running=false,last=0;

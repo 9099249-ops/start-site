@@ -29,10 +29,10 @@ export function calendarData(store,fleet,date,days=1,now=Date.now()){
  if(![1,7].includes(days))fail('Выберите день или неделю.');const start=localStamp(date+'T00:00'),end=start+days*86400000;
  const settings=store.sms?.settings(),close=store.sms?.content?.live().close||'22:00',lateMinutes=settings?.BOOKING_LATE_CANCEL_MINUTES||15;
  const rows=[];
- for(const r of store.db.prepare('SELECT i.*,r.returned,r.departed,r.expected_return FROM inquiries i LEFT JOIN rentals r ON r.id=i.rental_id ORDER BY i.id').all()){
+ for(const r of store.db.prepare('SELECT i.*,r.returned,r.departed,r.expected_return,r.initial_due FROM inquiries i LEFT JOIN rentals r ON r.id=i.rental_id ORDER BY i.id').all()){
   const b=JSON.parse(r.details);let w=bookingWindow(b,close);if(w&&r.departed)w={...w,start:localStamp(r.departed),end:r.returned||Math.max(r.expected_return||0,now+1)};if(!w||w.start>=end||w.end<=start)continue;
   rows.push({...r,details:b,start:w.start,end:w.end,units:w.quantity,late:r.status==='confirmed'&&now>w.start+lateMinutes*60000,state:r.returned?'completed':r.status,availability:r.status==='new'?availability(store.db,fleet,b.equipment,w.start,w.end,{now,close}):null});
  }
- const rentals=store.db.prepare('SELECT id,equipment,quantity,name,phone,departed,expected_return,returned FROM rentals WHERE id NOT IN (SELECT rental_id FROM inquiries WHERE rental_id IS NOT NULL)').all().filter(r=>localStamp(r.departed)<end&&(r.returned||Math.max(r.expected_return||0,end))>start);
- return {date,days,now,close,lateMinutes,rows,rentals,fleet:fleet.map(([id,label,total])=>({id,label,total})),overdue:store.db.prepare('SELECT id,equipment,quantity,expected_return FROM rentals WHERE returned IS NULL AND expected_return<=?').all(now)};
+ const rentals=store.db.prepare('SELECT id,equipment,quantity,name,phone,departed,expected_return,returned,initial_due FROM rentals WHERE id NOT IN (SELECT rental_id FROM inquiries WHERE rental_id IS NOT NULL)').all().filter(r=>localStamp(r.departed)<end&&(r.returned||Math.max(r.expected_return||0,end))>start);
+ return {date,days,now,close,lateMinutes,rows,rentals,fleet:fleet.map(([id,label,total])=>({id,label,total})),overdue:store.db.prepare('SELECT id,equipment,quantity,expected_return FROM rentals WHERE returned IS NULL AND initial_due=0 AND expected_return<=?').all(now)};
 }

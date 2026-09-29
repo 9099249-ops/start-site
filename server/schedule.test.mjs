@@ -1,0 +1,12 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {AdminStore} from './admin.mjs';
+test('Schedule wishes, approvals, change requests, roles and revisions; no payroll or history changes',()=>{const s=new AdminStore(':memory:');try{s.setupToken('t');s.setup({token:'t',adminPassword:'local-admin',staffPassword:'local-staff'},'local');const a=s.user(s.login({login:'admin',password:'local-admin'},'a')),u=s.user(s.login({login:'station',password:'local-staff'},'b'));const d=new Date(Date.now()+14*86400000);d.setUTCDate(d.getUTCDate()-((d.getUTCDay()+6)%7));const day=d.toISOString().slice(0,10),base={day,userId:u.id,revision:0,action:'wish',preference:'want',start:'11:00',end:'20:00',note:'Могу после учёбы'};
+const before=s.db.prepare('SELECT count(*) n FROM financial_audit_log').get().n;
+assert.throws(()=>s.schedule.save({...base,userId:a.id},u),e=>e.status===403);assert.throws(()=>s.schedule.save({...base,action:'confirm'},u),e=>e.status===403);
+s.schedule.save(base,u);let row=s.schedule.list(day,a).rows[0];assert.equal(row.preference,'want');assert.equal(row.confirmed,0);
+s.schedule.save({...base,action:'confirm',revision:1},a);s.schedule.save({...base,preference:'cannot',revision:2,note:'Планы изменились'},u);row=s.schedule.list(day,u).rows[0];assert.equal(row.confirmed,1);assert.equal(row.pending,1);assert.equal(row.plan_start,'11:00');
+assert.throws(()=>s.schedule.save({...base,revision:2},u),e=>e.status===409);
+s.schedule.save({...base,action:'reject',revision:3},a);row=s.schedule.list(day,a).rows[0];assert.equal(row.confirmed,1);assert.equal(row.pending,0);
+s.schedule.save({...base,action:'cancel',revision:4},a);assert.equal(s.schedule.list(day,u).rows[0].confirmed,0);
+assert.throws(()=>s.schedule.save({...base,day:'2026-02-31'},u));assert.throws(()=>s.schedule.save({...base,day:'2020-01-01'},u));assert.throws(()=>s.schedule.save({...base,start:'25:00'},u));assert.throws(()=>s.schedule.save({...base,start:'20:00',end:'11:00'},u));assert.throws(()=>s.schedule.list(day,null));
+assert.equal(s.db.prepare('SELECT count(*) n FROM financial_audit_log').get().n,before);assert.equal(s.db.prepare('SELECT count(*) n FROM employee_work_sessions').get().n,0);assert.equal(s.db.prepare('SELECT count(*) n FROM payments').get().n,0);
+}finally{s.close();}});

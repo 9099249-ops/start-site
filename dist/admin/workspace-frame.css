@@ -1,0 +1,2 @@
+/* Embedded sections keep their own scripts, forms and focus. Only common chrome is shared. */
+html body>.desk-chrome,html body>header{display:none!important}html{--desk-chrome-height:0px!important}html body{padding-top:0!important}html body main{padding-top:14px!important}.cafe-integrated .menu-categories{top:0!important}

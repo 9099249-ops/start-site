@@ -4,3 +4,5 @@ body:has(#operations){font-family:Arial,sans-serif;color:#15333d;background:#f4f
 @media(min-width:760px){body.pos-mode .active-rental .rental-main strong{font-size:16px}body.pos-mode .active-rental .rental-main span{font-size:14px}body.pos-mode .active-rental{min-height:54px}body.pos-mode .ops-nav{z-index:50}}
 
 .work-bar .work-error.work-success{color:#236146}
+
+#operations .recipe-save-actions{display:grid;gap:6px}#operations #recipe-save-status{margin:0;font-size:13px;line-height:1.4;overflow-wrap:anywhere}#operations #recipe-save-status:empty{display:none}#operations #recipe-save-status[data-kind=success]{color:#236146}#operations #recipe-save-status[data-kind=error]{color:#9a310e}#operations #recipe-save-status[data-kind=saving]{color:#345e69}#operations #recipe-form[aria-busy=true]{cursor:progress}#operations #recipe-form[aria-busy=true] button{cursor:progress;opacity:.7}

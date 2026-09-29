@@ -65,6 +65,7 @@ test('Nearest bookings use visit time rather than newest received IDs',t=>{
 test('Desk HTTP handlers require existing session, role and same-origin JSON; return and undo round trip',async t=>{
  const {s,u}=fixture(t),at=Date.now(),origin='https://spotsup.ru',handler=adminHandler(s,origin);
  const token=s.login({login:'station',password:'test-staff-password'},'test-desk');
+ s.workforce.action({requestId:randomUUID()},u,'start',at);
  const id=s.create({requestId:randomUUID(),equipment:'sup',quantity:1,name:'Тест',phone:'+79001238822',departed:stamp(at),expectedReturn:stamp(at+3600000),amount:'1000',method:'cash'},u,at);
  const call=async(path,body,session=token,requestOrigin=origin)=>{
   const req=Readable.from(body?[Buffer.from(JSON.stringify(body))]:[]);req.method=body?'POST':'GET';req.headers={origin:requestOrigin,'content-type':'application/json',cookie:session?'__Host-start_session='+session:''};req.socket={remoteAddress:'test-desk'};
@@ -76,9 +77,9 @@ test('Desk HTTP handlers require existing session, role and same-origin JSON; re
  assert.equal((await call('extend',{id,revision:0,minutes:30})).status,200);
  assert.equal((await call('extend',{id,revision:0,minutes:30})).status,409);
  assert.equal((await call('search?q=8822')).result.rentals[0].id,id);
- const back=await call('return',{id});assert.equal(back.status,200);assert.equal(back.result.canUndo,true);
- assert.equal((await call('undo-return',{id,revision:back.result.revision,returnedAt:back.result.returnedAt})).status,200);
- assert.equal(s.db.prepare('SELECT returned FROM rentals WHERE id=?').get(id).returned,null);
+ const back=await call('return',{id});assert.equal(back.status,200);assert.equal(back.result.canUndo,false);
+ assert.equal((await call('undo-return',{id,revision:back.result.revision,returnedAt:back.result.returnedAt})).status,409);
+ assert.equal(s.db.prepare('SELECT returned FROM rentals WHERE id=?').get(id).returned,back.result.returnedAt);
  s.db.prepare("UPDATE admin_users SET role='waiter' WHERE id=?").run(u.id);
  assert.equal((await call('search?q=8822')).status,403);
  assert.equal((await call('extend',{id,revision:3,minutes:60})).status,403);

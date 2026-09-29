@@ -1,0 +1,4 @@
+(()=>{'use strict';const host=document.querySelector('.work-bar');if(!host)return;const box=document.createElement('div');box.className='device-health';box.hidden=true;box.setAttribute('role','status');host.append(box);let busy=false;
+ async function refresh(){if(document.hidden||busy)return;busy=true;try{const r=await fetch('/api/admin/desk-health',{cache:'no-store'});if(r.status===401){box.hidden=true;return;}if(!r.ok)throw Error();const d=await r.json();box.replaceChildren();for(const item of [d.printer,d.terminal]){const span=document.createElement('span');span.dataset.state=item.state;span.textContent=item.state==='ok'?(item===d.printer?'● Принтер':'● Касса'):'! '+item.message;span.title=item.message+'. '+d.note;box.append(span);}box.hidden=false;}catch{box.hidden=false;box.textContent='Статус оборудования не обновлён — проверьте связь.';}finally{busy=false;}}
+ refresh();setInterval(refresh,60000);document.addEventListener('visibilitychange',refresh);
+})();
