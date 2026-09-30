@@ -1,0 +1,69 @@
+/* Shared visual shell for the compact station workspace. */
+body.pos-redesign{--pos-paper:#f4f3ed;--pos-ink:#162d48;--pos-muted:#687990;--pos-line:#dfe3e5;--workspace-accent:#2859e8;background:var(--pos-paper);color:var(--pos-ink);font-family:Arial,system-ui,sans-serif;font-variant-numeric:tabular-nums}
+body.pos-redesign.theme-cafe{--workspace-accent:#7b2b43}
+body.pos-redesign .desk-chrome{box-shadow:none;border-bottom:1px solid var(--pos-line)}
+body.pos-redesign .desk-chrome .ops-nav{min-height:50px;padding:3px 14px;background:#22384d;gap:4px}
+body.pos-redesign .desk-chrome .ops-nav .pos-brand{font-size:27px!important;letter-spacing:2px;padding:6px 14px 6px 0;margin-right:clamp(12px,4vw,64px)}
+body.pos-redesign .desk-chrome .ops-nav a:not(.pos-brand){font-size:16px!important;font-weight:600!important;padding:8px 20px;min-height:44px;border-radius:6px;white-space:nowrap}
+body.pos-redesign .desk-chrome .ops-nav a[aria-current=page]{background:var(--workspace-accent);color:white}
+body.pos-redesign .connection-state{font-size:13px;color:#83d49c;margin:0 12px;white-space:nowrap}
+body.pos-redesign .connection-state.stale{color:#ffc3b9}
+body.pos-redesign .connection-state.stale:before{color:#ffafa2}
+body.pos-redesign .desk-chrome .ops-logout{min-width:66px;min-height:38px;padding:6px 10px;font-size:13px;margin-left:auto;border-radius:6px}
+body.pos-redesign .work-bar{display:flex;align-items:center;flex-wrap:wrap;background:#faf9f5;padding:5px 14px;gap:5px 8px;min-height:54px}
+body.pos-redesign .work-bar[hidden]{display:none}
+body.pos-redesign .work-bar .active-people{order:0;flex:1 1 260px;gap:5px 16px;align-items:center;font-size:15px!important;min-width:0}
+body.pos-redesign .work-bar .active-people:before{font-size:11px;color:#7b2b43;letter-spacing:.04em;white-space:nowrap}
+body.pos-redesign .work-bar .work-person{font-size:15px;font-weight:700;color:#162d48;white-space:nowrap}
+body.pos-redesign .work-bar .work-shift-action{order:1}
+body.pos-redesign .work-bar .work-identity{order:2;font-size:12px;color:#64758a;max-width:105px;line-height:1.25}
+body.pos-redesign .work-bar .pos-toggle{order:3;margin:0}
+body.pos-redesign .work-bar .schedule-link{order:4}
+body.pos-redesign .work-bar .device-health{order:5;flex:0 1 auto;width:auto;gap:6px;margin:0;font-size:12px;max-width:230px}
+body.pos-redesign .device-health span{border:1px solid #e1e5e5;padding:9px 8px;border-radius:6px;background:white;line-height:1.25;white-space:nowrap}
+body.pos-redesign .device-health [data-state=ok]{color:#326e4e}
+body.pos-redesign .device-health [data-state=error]{background:#fff0ed;color:#a32937}
+body.pos-redesign .work-bar .work-account{order:6;margin:0}
+body.pos-redesign .work-bar .work-error{order:8;flex:1 0 100%;font-size:13px;line-height:1.4}
+body.pos-redesign .work-bar .work-error:empty{display:none}
+body.pos-redesign .work-bar button,body.pos-redesign .work-bar .schedule-link,body.pos-redesign .work-account>summary{font:500 14px/1.2 Arial,system-ui,sans-serif;min-height:42px;border:1px solid #dfe3e5;border-radius:6px;padding:8px 10px;background:white;color:#162d48;box-sizing:border-box}
+body.pos-redesign .work-bar .work-shift-action{white-space:nowrap}
+body.pos-redesign .work-account>summary{min-width:42px;font-size:22px;text-align:center;list-style:none}
+body.pos-redesign .work-account>summary::-webkit-details-marker{display:none}
+body.pos-redesign .work-account>div{min-width:270px;border:1px solid var(--pos-line);border-radius:8px;box-shadow:0 10px 32px #17293b20;z-index:100;right:0}
+body.pos-redesign .work-account>div button,body.pos-redesign .work-account>div a{min-height:44px;font-size:15px;border:0;text-align:left;border-radius:3px;padding:12px}
+body.pos-redesign .station-utility{position:fixed;inset:auto 0 0;z-index:45;display:flex;align-items:center;gap:8px 22px;flex-wrap:wrap;min-height:52px;box-sizing:border-box;padding:5px 16px;background:#fff;border-top:1px solid var(--pos-line);color:#162d48}
+body.pos-redesign .station-utility[hidden]{display:none}
+.station-utility>button{display:inline-flex;align-items:center;gap:10px;min-height:42px;border:0;border-radius:5px;background:transparent;color:inherit;font:500 15px/1.25 Arial,system-ui,sans-serif;padding:8px;cursor:pointer}
+.station-utility>button:hover{background:#f0f2f4}.station-utility>button svg{width:22px;height:22px;flex:none}.station-utility>button.is-stale{color:#966424}
+.station-utility-print{margin-left:auto}.station-utility-print .print-panel{margin:0;padding:0;border:0;background:transparent}.station-utility-print button{min-height:42px;font:600 14px/1.25 Arial,system-ui,sans-serif;padding:8px 12px;border:1px solid #e0e4e5;background:white;border-radius:5px;color:#162d48}
+.station-utility-print [role=status]:empty,.station-utility-error:empty{display:none}.station-utility-error{flex-basis:100%;font-size:13px;color:#a32937}.station-utility-print [role=status]{font-size:13px;margin:4px 0;color:#a32937}
+body.pos-redesign.workspace-shell #workspace-frames{bottom:var(--pos-footer-height,0px)}
+body.pos-redesign:not(.workspace-shell).pos-has-utility main{padding-bottom:calc(var(--pos-footer-height,0px) + 12px)}
+body.pos-redesign .guest-dialog,body.pos-redesign .day-desk-dialog,body.pos-redesign .print-dialog{border-radius:9px;background:#faf9f5;font-size:16px}
+body.pos-redesign button:focus-visible,body.pos-redesign a:focus-visible,body.pos-redesign summary:focus-visible{outline:3px solid #799cff;outline-offset:2px}
+body.pos-redesign button:disabled{cursor:default;opacity:.55}
+@media(max-width:1200px){
+ body.pos-redesign .desk-chrome .ops-nav .pos-brand{margin-right:12px;font-size:24px!important}
+ body.pos-redesign .desk-chrome .ops-nav a:not(.pos-brand){padding-inline:15px}
+ body.pos-redesign .work-bar .active-people{flex-basis:100%;order:-1}
+ body.pos-redesign .work-bar .work-identity{margin-right:auto}
+ body.pos-redesign .work-bar .device-health{max-width:350px}
+}
+@media(max-width:700px){
+ body.pos-redesign .desk-chrome .ops-nav{padding:3px 5px;gap:2px;min-height:48px}
+ body.pos-redesign .desk-chrome .ops-nav .pos-brand,body.pos-redesign .connection-state{display:none}
+ body.pos-redesign .desk-chrome .ops-nav a:not(.pos-brand){font-size:12px!important;flex:1;min-width:0;min-height:44px;padding:7px 3px}
+ body.pos-redesign .desk-chrome .ops-logout{min-width:48px;font-size:11px;padding:6px}
+ body.pos-redesign .work-bar{padding:4px 8px;gap:4px 6px}
+ body.pos-redesign .work-bar .active-people{font-size:13px!important;gap:3px 12px}
+ body.pos-redesign .work-bar .work-person{font-size:13px}
+ body.pos-redesign .work-bar .work-identity{display:none}
+ body.pos-redesign .work-bar button,body.pos-redesign .work-bar .schedule-link,body.pos-redesign .work-account>summary{min-height:42px;font-size:12px;padding:7px 8px}
+ body.pos-redesign .work-bar .work-account>summary{font-size:20px;min-width:36px}
+ body.pos-redesign .work-bar .device-health{display:none}
+ body.pos-redesign .work-bar .device-health:has([data-state=error]),body.pos-redesign .work-bar .device-health:has([data-state=unconfigured]),body.pos-redesign .work-bar .device-health:not(:has([data-state])){display:flex;order:8;flex-basis:100%;max-width:none;font-size:11px}
+ body.pos-redesign .station-utility{gap:4px;padding:4px 6px;min-height:44px}
+ .station-utility>button{font-size:11px;min-height:36px;padding:5px;gap:5px}.station-utility>button svg{width:16px;height:16px}
+ .station-utility-print button{font-size:11px;min-height:36px;padding:5px}.station-utility-print{margin-left:auto}
+}

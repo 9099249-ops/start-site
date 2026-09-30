@@ -13,7 +13,7 @@ function fixture() {
   const cafe = new CafeStore(admin, null, {env: {}});
   const dish = cafe.catalog().items.find(i => i.name === '4 сыра');
   const item = cafe.stock.inventory.catalog(owner).items.find(i => i.name === dish.name);
-  const amount = value => { const i = cafe.stock.inventory.row(item.id); cafe.stock.inventory.move({id: i.id, revision: i.revision, kind: 'SET', amount: value, requestId: randomUUID()}, owner); };
+  const amount = value => { const i = cafe.stock.inventory.row(item.id); cafe.stock.inventory.move({id: i.id, revision: i.revision, kind: 'SET', reason:'Проверочный пересчёт', amount: value, requestId: randomUUID()}, owner); };
   return {admin, cafe, dish, item, amount};
 }
 test('Ready-made pizza stock becomes available after restocking and unavailable at zero, never guesses unknown stock', () => {

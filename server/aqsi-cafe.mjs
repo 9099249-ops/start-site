@@ -13,10 +13,10 @@ export class AqsiCafe extends AqsiPilot {
   this.db.exec('CREATE TABLE IF NOT EXISTS aqsi_cafe_attempts(payment_id TEXT PRIMARY KEY REFERENCES aqsi_cafe(id),order_id INTEGER NOT NULL REFERENCES cafe_orders(id)); INSERT OR IGNORE INTO aqsi_cafe_attempts SELECT payment_id,order_id FROM aqsi_cafe_orders');
   // Public orders are paid manually on CS50. Remove only unused terminal flags
   // from the brief earlier rollout; never modify an attempted/paid operation.
-  this.db.prepare(`UPDATE cafe_orders SET details=json_remove(details,'$.terminalPaymentRequired','$.terminalQuickSale','$.pendingKitchen'),revision=revision+1 WHERE source IN ('customer_web','customer_nfc') AND json_extract(details,'$.terminalPaymentRequired')=1 AND json_extract(details,'$.terminalPaidAt') IS NULL AND NOT EXISTS(SELECT 1 FROM aqsi_cafe_orders p WHERE p.order_id=cafe_orders.id)`).run();
+  this.db.prepare(`UPDATE cafe_orders SET details=json_remove(details,'$.terminalPaymentRequired','$.terminalQuickSale','$.pendingKitchen'),revision=revision+1 WHERE source IN ('customer_web','customer_nfc') AND json_extract(details,'$.terminalPaymentRequired')=1 AND json_extract(details,'$.terminalPaidAt') IS NULL AND json_extract(details,'$.manualPaymentRequired') IS NULL AND NOT EXISTS(SELECT 1 FROM aqsi_cafe_orders p WHERE p.order_id=cafe_orders.id)`).run();
  }
  forOrder(id){const row=this.db.prepare('SELECT p.* FROM aqsi_cafe p JOIN aqsi_cafe_orders o ON o.payment_id=p.id WHERE o.order_id=?').get(id);return row||null;}
- payment(id){const r=this.forOrder(id);return r?{...this.view(r),paid:!!r.slip||r.state==='cash_done'}:null;}
+ payment(id){const r=this.forOrder(id);const d=r?JSON.parse(this.db.prepare('SELECT details FROM cafe_orders WHERE id=?').get(id).details):{};return r?{...this.view(r),...(d.manualReconciliation&&d.paymentMethod==='card'?{label:'Оплачено вручную картой / QR — сверено сотрудником'}:{}),paid:!!r.slip||r.state==='cash_done'}:null;}
  locked(id){const r=this.forOrder(id);return !!r&&r.state!=='cancelled';}
  async begin(b,u){
   staff(u);if(!Number.isSafeInteger(b.id))fail('Обновите заказ.',400);
@@ -25,14 +25,14 @@ export class AqsiCafe extends AqsiPilot {
   let created=false;const row=this.cafe.transaction(()=>{
    const existing=this.forOrder(b.id);if(existing&&existing.state!=='cancelled')return existing;
    if(existing&&b.retryPaymentId!==existing.id)fail('Обновите отменённую оплату перед повтором.');
-   if(b.cash===true&&!existing)fail('Сначала дождитесь подтверждения отмены на кассе.');
-   const r=this.cafe.order(b.id,u),c=this.connection.read();
+   
+   const r=this.cafe.order(b.id,u),c=this.connection.read();if(r.details.guestBillId)fail('Оплатите общий счёт гостя.');
    if(!['admin','waiter'].includes(r.source)||!r.details.terminalPaymentRequired||r.details.complimentary||r.total_cents<=0||['DELIVERED','CANCELLED'].includes(r.status))fail('Этот заказ не ожидает оплаты на кассе.');
    if(r.revision!==b.revision)fail('Заказ изменился. Обновите карточку.');
-   if(!c.apiKey||!c.deviceId)fail('Касса не подключена. Обратитесь к администратору.');
+   if(b.cash!==true&&(!c.apiKey||!c.deviceId))fail('Касса не подключена. Обратитесь к администратору.');
    if(b.cash!==true&&this.terminalBusy())fail('Касса занята или предыдущая операция требует сверки. Проверьте заказы с отметкой оплаты.');
    const id=randomUUID(),now=Date.now();
-   this.db.prepare("INSERT INTO aqsi_cafe(id,request_id,device_id,amount,state,created,updated,actor) VALUES(?,?,?,?, ?,?,?,?)").run(id,randomUUID(),c.deviceId,r.total_cents,b.cash===true?'cash_done':'payment_sending',now,now,u.id);
+   this.db.prepare("INSERT INTO aqsi_cafe(id,request_id,device_id,amount,state,created,updated,actor) VALUES(?,?,?,?, ?,?,?,?)").run(id,randomUUID(),c.deviceId||0,r.total_cents,b.cash===true?'cash_done':'payment_sending',now,now,u.id);
    this.db.prepare('INSERT INTO aqsi_cafe_orders VALUES(?,?) ON CONFLICT(order_id) DO UPDATE SET payment_id=excluded.payment_id').run(r.id,id);
    this.db.prepare('INSERT INTO aqsi_cafe_attempts VALUES(?,?)').run(id,r.id);
    if(b.cash===true)this.account(this.row(id));
@@ -41,6 +41,19 @@ export class AqsiCafe extends AqsiPilot {
   if(!created||row.state==='cash_done')return this.view(row);
   // There is no await between committing the lock and initiating the single POST.
   await this.send(row.id,'payment',purchaseRequest(row.device_id,row.amount));return this.view(this.row(row.id));
+ }
+ async reconcile(b,u){
+  staff(u);if(!['unpaid','cash','card'].includes(b.result)||b.confirmed!==true||typeof b.note!=='string'||!b.note.trim()||b.note.length>300)fail('Проверьте историю кассы и укажите результат сверки.',400);
+  const prior=this.forOrder(b.id);if(!prior||prior.id!==b.paymentId)fail('Оплата изменилась. Обновите заказ.');
+  if(prior.payment_op&&['payment_waiting','review'].includes(prior.state))await this.advance(prior);
+  return this.cafe.transaction(()=>{const p=this.forOrder(b.id);if(p.id!==b.paymentId)fail('Оплата изменилась.');
+   if(p.state==='cancelled'&&b.result==='unpaid')return this.view(p);
+   if(p.state==='cash_done')return this.view(p);
+   if(p.slip||p.receipt_op||!['payment_unknown','payment_waiting','review','cancelled'].includes(p.state))fail('Оплата подтверждена или чек обрабатывается. Повторно принимать деньги нельзя.');
+   if(Date.now()-p.created<120000)fail('Дождитесь завершения запроса на кассе: до двух минут.');
+   if(b.result==='unpaid')this.set(p.id,'cancelled');else{this.set(p.id,'cash_done');this.account(this.row(p.id));const r=this.cafe.order(b.id,u),d=r.details;d.paymentMethod=b.result;d.manualCashReceipt=b.result==='cash';if(b.result==='card')delete d.cashPaidAt;d.manualReconciliation=true;this.db.prepare('UPDATE cafe_orders SET details=?,revision=revision+1 WHERE id=?').run(JSON.stringify(d),b.id);}
+   this.admin.workforce.audit(u,'payment_manual_reconciliation',b.id,{paymentId:p.id,state:p.state},{result:b.result},b.note.trim(),Date.now());
+   return this.view(this.row(p.id));});
  }
  account(row){
   // Payment recognition and accounting are atomic; a failed fiscal receipt must
@@ -52,7 +65,7 @@ export class AqsiCafe extends AqsiPilot {
    const details=JSON.parse(order.details);if(details.terminalPaidAt)return;
    const at=current.slip?Date.parse(JSON.parse(current.slip).content.dateTime):Date.now();
    const paidAt=Number.isFinite(at)&&at>=row.created-300000&&at<=Date.now()+300000?at:Date.now();
-   const pendingKitchen=details.pendingKitchen;details.pendingKitchen=false;details.terminalPaidAt=paidAt;if(current.state==='cash_done')details.manualCashReceipt=true;
+   const pendingKitchen=details.pendingKitchen;details.pendingKitchen=false;details.terminalPaidAt=paidAt;details.paymentMethod=current.state==='cash_done'?'cash':'card';if(current.state==='cash_done'){details.manualCashReceipt=true;details.cashPaidAt=paidAt;}
    const status=details.terminalQuickSale?'DELIVERED':'ACCEPTED';
    this.db.prepare('UPDATE cafe_orders SET status=?,details=?,updated=?,revision=revision+1 WHERE id=?').run(status,JSON.stringify(details),paidAt,order.id);
    this.cafe.event(order.id,'PAID',{id:row.actor},{terminalPaymentId:row.id},paidAt);

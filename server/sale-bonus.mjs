@@ -14,7 +14,7 @@ export function saleBonuses(events,employees,percent,cashAdjustment=0){
  for(const event of [...events].sort((a,b)=>a.at-b.at||String(a.id).localeCompare(String(b.id)))){
   if(!Number.isSafeInteger(event.cents)||event.cents<0)throw Error('Некорректная сумма продажи');
   sales+=event.cents;const next=Number(BigInt(sales)*BigInt(percent)/100n),delta=next-pool;pool=next;
-  allocate(delta,rows.filter(e=>e.sessions.some(s=>s.started_at<=event.at&&(s.ended_at===null||s.ended_at>event.at))));
+  allocate(delta,rows.filter(e=>event.bonusActor?e.user_id===event.bonusActor:e.sessions.some(s=>s.started_at<=event.at&&(s.ended_at===null||s.ended_at>event.at))));
  }
  const finalPool=Number(BigInt(Math.max(0,sales+cashAdjustment))*BigInt(percent)/100n);
  allocate(finalPool-pool,rows.filter(e=>e.worked_ms>0),true);

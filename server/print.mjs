@@ -1,7 +1,7 @@
 import {createHash, randomUUID, timingSafeEqual} from 'node:crypto';
 
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
-const owner=u=>{if(!u)fail('Войдите в админку.',401);if(u.role!=='admin')fail('Печать финансового отчёта доступна администратору.',403);};
+const owner=u=>{if(!u)fail('Войдите в админку.',401);if(u.role!=='admin')fail('Повторная печать этого документа доступна администратору.',403);};
 const staff=u=>{if(!u)fail('Войдите в админку.',401);if(!['admin','staff','waiter'].includes(u.role))fail('Нет доступа.',403);};
 const day=now=>new Date(now+10800000).toISOString().slice(0,10);
 export const canonical=value=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);
@@ -49,13 +49,13 @@ export class PrintStore {
   return {shiftId:s.id,date:s.day,preliminary:!s.closed_at,asOf:now,totalCents:s.closed_at?s.total_revenue_cents:calc.revenue.cents,source:s.closed_at?'Итог кассы: кафе + прокат':calc.revenue.source,employees};
  }
  reportInfo(u,shiftId,now=Date.now()){
-  owner(u);const snapshot=this.reportSnapshot(shiftId,now),base=`shift:${snapshot.shiftId}:${snapshot.preliminary?'preliminary':'final'}`;
+  staff(u);const snapshot=this.reportSnapshot(shiftId,now),base=`shift:${snapshot.shiftId}:${snapshot.preliminary?'preliminary':'final'}`;
   const docs=this.db.prepare("SELECT d.id FROM print_documents d WHERE source_key LIKE ? ORDER BY created_at DESC,rowid DESC").all(base+':%');
   const reports=docs.map(d=>this.job(this.db.prepare('SELECT id FROM print_jobs WHERE document_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1').get(d.id).id));
   return {snapshot,reports,device:this.device(now)};
  }
  report(b,u,now=Date.now()){
-  owner(u);if(!this.enabled())fail('Подключение печати ещё не включено.',503);
+  staff(u);if(!this.enabled())fail('Подключение печати ещё не включено.',503);
   return this.tx(()=>{const info=this.reportInfo(u,b.shiftId,now),latest=info.reports[0];
    if(latest&&!b.newRevision)return {job:latest,duplicate:true};
    if(b.newRevision){id(b.previousDocumentId);if(!latest)fail('Предыдущий отчёт не найден.',409);if(latest.document_id!==b.previousDocumentId)return {job:latest,duplicate:true};if(!label(b.reason,300))fail('Укажите причину новой редакции.');}
@@ -76,13 +76,13 @@ export class PrintStore {
    if(!delivered)return;
   }
   const items=e.kind==='CANCELLED'?d.items:batch.items;
-  const payload={type:'cafe_order',order_id:`start-cafe-${r.id}-event-${e.id}`,order_number:String(r.id),ticket_kind:e.kind,order_source:['admin','waiter'].includes(r.source)?'admin':'site',customer_name:label(d.name),fulfillment:label((d.complimentary?'БЕСПЛАТНО · '+d.complimentary.recipientName+' · ':'')+(d.place?.name||{house:'Домик в яхт клубе: '+d.house,pickup:'Заберут в кафе',lounge:'Лаунж-зона',yacht:'На яхту / катер',place:'На месте'}[d.fulfillment])),comment:label([d.complimentary?'БЕСПЛАТНО. К оплате: 0 ₽. '+(d.complimentary.comment||''):'',d.yacht,d.location,d.deliveryCents!==undefined?'Доставка: '+rubles(d.deliveryCents)+' ₽':'',d.requestedAt?'К '+d.requestedAt:'',d.comment].filter(Boolean).join('\n'),1500),items:items.map(i=>({name:label(i.name,200),qty:i.quantity,price:rubles(d.complimentary?0:i.totalCents),modifiers:[i.variant?.name,...(i.modifiers||[]).map(m=>m.name),i.comment].filter(Boolean).map(x=>label(x,200))})),total:rubles(e.kind==='CANCELLED'?r.total_cents:batch.totalCents)};
+  const payload={type:'cafe_order',order_id:`start-cafe-${r.id}-event-${e.id}`,order_number:String(r.id),ticket_kind:e.kind,order_source:['admin','waiter'].includes(r.source)?'admin':'site',customer_name:label(d.name),fulfillment:label((d.guestDeferred&&!d.terminalPaidAt?'НЕ ОПЛАЧЕНО · НА СЧЁТ №'+d.guestBillId+' · ':'')+(d.complimentary?'БЕСПЛАТНО · '+d.complimentary.recipientName+' · ':'')+(d.place?.name||{house:'Домик в яхт клубе: '+d.house,pickup:'Заберут в кафе',lounge:'Лаунж-зона',yacht:'На яхту / катер',place:'На месте'}[d.fulfillment])),comment:label([d.complimentary?'БЕСПЛАТНО. К оплате: 0 ₽. '+(d.complimentary.comment||''):'',d.yacht,d.location,d.deliveryCents!==undefined?'Доставка: '+rubles(d.deliveryCents)+' ₽':'',d.requestedAt?'К '+d.requestedAt:'',d.comment].filter(Boolean).join('\n'),1500),items:items.map(i=>({name:label(i.name,200),qty:i.quantity,price:rubles(d.complimentary?0:i.totalCents),modifiers:[i.variant?.name,...(i.modifiers||[]).map(m=>m.name),i.comment].filter(Boolean).map(x=>label(x,200))})),total:rubles(e.kind==='CANCELLED'?r.total_cents:batch.totalCents)};
   return this.enqueue(`cafe:event:${e.id}`,payload,{orderId:r.id,eventId:e.id,eventKind:e.kind},u,now);
  }
  cafeJobs(orderId,u){staff(u);if(!Number.isSafeInteger(orderId)||orderId<1)fail('Неверный заказ.');return {jobs:this.db.prepare("SELECT j.id FROM print_jobs j JOIN print_documents d ON d.id=j.document_id WHERE d.kind='cafe_order' AND json_extract(d.snapshot,'$.orderId')=? ORDER BY j.created_at,j.rowid").all(orderId).map(r=>this.job(r.id)),device:this.device()};}
  reprint(b,u,now=Date.now()){
-  owner(u);if(!this.enabled())fail('Печать отключена.',503);id(b.jobId);if(!label(b.reason,300))fail('Укажите причину перепечатки.');
-  return this.tx(()=>{const parent=this.job(b.jobId),key='reprint:'+parent.id,old=this.db.prepare('SELECT id FROM print_jobs WHERE request_key=?').get(key);if(old)return {job:this.job(old.id),duplicate:true};
+  staff(u);if(!this.enabled())fail('Печать отключена.',503);id(b.jobId);if(!label(b.reason,300))fail('Укажите причину перепечатки.');
+  return this.tx(()=>{const parent=this.job(b.jobId);if(parent.kind!=='shift_report')owner(u);const key='reprint:'+parent.id,old=this.db.prepare('SELECT id FROM print_jobs WHERE request_key=?').get(key);if(old)return {job:this.job(old.id),duplicate:true};
    const latest=this.db.prepare('SELECT id,status FROM print_jobs WHERE document_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1').get(parent.document_id);
    if(latest.id!==parent.id||!['printed','failed'].includes(parent.status))fail('Дождитесь завершения текущей попытки. При ошибке сначала проверьте принтер.',409);
    const jobId=randomUUID();this.db.prepare('INSERT INTO print_jobs(id,document_id,operation,request_key,parent_job_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').run(jobId,parent.document_id,'reprint',key,parent.id,now,now);this.audit(jobId,u,'reprint',b.reason,now);return {job:this.job(jobId),duplicate:false};

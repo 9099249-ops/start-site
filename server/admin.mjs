@@ -1,3 +1,5 @@
+import {CashLedger} from './cash-ledger.mjs';
+import {clientsXlsx} from './clients-export.mjs';
 import {ScheduleStore} from './schedule.mjs';
 import {fleetOrder,orderedFleet,saveFleetOrder} from './fleet-order.mjs';
 import {RefundStore} from './refunds.mjs';
@@ -39,7 +41,7 @@ export class AdminStore{
  CREATE TABLE IF NOT EXISTS payroll_payments(id INTEGER PRIMARY KEY,shift_id INTEGER NOT NULL,user_id INTEGER NOT NULL REFERENCES admin_users(id),amount_cents INTEGER NOT NULL,paid_at INTEGER NOT NULL,paid_by INTEGER NOT NULL REFERENCES admin_users(id));
  CREATE TABLE IF NOT EXISTS telegram_settings(id INTEGER PRIMARY KEY CHECK(id=1),enabled INTEGER NOT NULL DEFAULT 1,owner_chat_id TEXT NOT NULL DEFAULT '');
  INSERT OR IGNORE INTO telegram_settings(id) VALUES(1);
- `);if(!this.db.prepare('PRAGMA table_info(rentals)').all().some(c=>c.name==='revision'))this.db.exec('ALTER TABLE rentals ADD COLUMN revision INTEGER NOT NULL DEFAULT 0');if(!this.db.prepare('PRAGMA table_info(rentals)').all().some(c=>c.name==='expected_return'))this.db.exec('ALTER TABLE rentals ADD COLUMN expected_return INTEGER');this.db.exec("UPDATE rentals SET expected_return=CAST(strftime('%s',departed||':00+03:00') AS INTEGER)*1000+3600000 WHERE expected_return IS NULL");for(const [name,type] of [['initial_due','INTEGER NOT NULL DEFAULT 0'],['extension_due','INTEGER NOT NULL DEFAULT 0'],['people','INTEGER'],['custom_json','TEXT']])if(!this.db.prepare('PRAGMA table_info(rentals)').all().some(c=>c.name===name))this.db.exec('ALTER TABLE rentals ADD COLUMN '+name+' '+type);this.accounts=new AccountsStore(this);this.workforce=new WorkforceStore(this);this.refunds=new RefundStore(this);this.tasks=new TasksStore(this);this.schedule=new ScheduleStore(this);}
+ `);if(!this.db.prepare('PRAGMA table_info(rentals)').all().some(c=>c.name==='revision'))this.db.exec('ALTER TABLE rentals ADD COLUMN revision INTEGER NOT NULL DEFAULT 0');if(!this.db.prepare('PRAGMA table_info(rentals)').all().some(c=>c.name==='expected_return'))this.db.exec('ALTER TABLE rentals ADD COLUMN expected_return INTEGER');this.db.exec("UPDATE rentals SET expected_return=CAST(strftime('%s',departed||':00+03:00') AS INTEGER)*1000+3600000 WHERE expected_return IS NULL");for(const [name,type] of [['initial_due','INTEGER NOT NULL DEFAULT 0'],['extension_due','INTEGER NOT NULL DEFAULT 0'],['people','INTEGER'],['custom_json','TEXT']])if(!this.db.prepare('PRAGMA table_info(rentals)').all().some(c=>c.name===name))this.db.exec('ALTER TABLE rentals ADD COLUMN '+name+' '+type);this.accounts=new AccountsStore(this);this.workforce=new WorkforceStore(this);this.refunds=new RefundStore(this);this.cashLedger=new CashLedger(this);this.tasks=new TasksStore(this);this.schedule=new ScheduleStore(this);}
  configured(){return this.db.prepare('SELECT count(*) n FROM admin_users').get().n>0;}
  setupToken(token){if(this.configured())fail('Учётные записи уже созданы.',409);this.db.prepare("INSERT INTO admin_config VALUES('setup',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(hash(token));}
  limit(key,limit=8,now=Date.now()){
@@ -84,7 +86,7 @@ export class AdminStore{
   if(!/^[a-f0-9-]{36}$/.test(b.requestId||''))fail('Обновите форму и повторите.');
   const paid=amount(b.amount);b.method=b.method||'unspecified';if(!['cash','card','unspecified'].includes(b.method))fail('Выберите способ оплаты.');
   this.db.exec('BEGIN IMMEDIATE');try{
-   const previous=this.db.prepare('SELECT id FROM rentals WHERE request_id=?').get(b.requestId);if(previous){this.db.exec('COMMIT');return previous.id;}
+   const previous=this.db.prepare('SELECT id FROM rentals WHERE request_id=?').get(b.requestId);if(previous){const link=this.guestBills?.link('rental',previous.id);if((b.guestBillId||null)!==(link?.id||null))fail('Запрос уже сохранён в другом счёте.',409);this.db.exec('COMMIT');return previous.id;}
    let inquiry;
    if(b.inquiryId!==undefined){
     if(!Number.isSafeInteger(b.inquiryId))fail('Неверная заявка.');
@@ -101,7 +103,7 @@ export class AdminStore{
    if(active+b.quantity>item[2])fail('Недостаточно свободной техники. Обновите список или отметьте возврат.',409);
    const id=Number(this.db.prepare('INSERT INTO rentals(request_id,equipment,quantity,name,phone,departed,created,created_by) VALUES(?,?,?,?,?,?,?,?)').run(b.requestId,b.equipment,b.quantity,b.name.trim(),b.phone.trim(),b.departed,now,user.id).lastInsertRowid);
    const people=b.equipment==='big'?Number(b.people??linked?.quantity):null;if(b.equipment==='big'&&(!Number.isSafeInteger(people)||people<1||people>20))fail('Укажите количество человек на Big SUP (1–20).');this.db.prepare('UPDATE rentals SET expected_return=?,people=? WHERE id=?').run(expected,people,id);
-   if(this.rentalTerminal?.enabled&&paid>0)this.db.prepare('UPDATE rentals SET initial_due=? WHERE id=?').run(paid,id);else this.db.prepare('INSERT INTO payments(rental_id,amount,method,day,created,user_id,note) VALUES(?,?,?,?,?,?,?)').run(id,paid,b.method,moscowDay(now),now,user.id,'Оплата при выдаче');if(inquiry){const status=this.rentalTerminal?.enabled&&paid>0?'payment_pending':'issued';this.db.prepare('UPDATE inquiries SET status=?,rental_id=?,actor=?,updated=?,revision=revision+1 WHERE id=?').run(status,id,user.id,now,inquiry.id);this.db.prepare('INSERT INTO inquiry_events(inquiry_id,actor,status,created) VALUES(?,?,?,?)').run(inquiry.id,user.id,status,now);}this.audit(user,'issue',id);this.db.exec('COMMIT');return id;
+   if(b.guestBillId!==undefined){if(!this.guestBills)fail('Счета недоступны.');const bill=this.guestBills.attach(b.guestBillId,'rental',id,paid,user);this.db.prepare('UPDATE rentals SET initial_due=? WHERE id=?').run(bill.deferred?0:paid,id);}else if(this.rentalTerminal?.enabled&&paid>0)this.db.prepare('UPDATE rentals SET initial_due=? WHERE id=?').run(paid,id);else this.db.prepare('INSERT INTO payments(rental_id,amount,method,day,created,user_id,note) VALUES(?,?,?,?,?,?,?)').run(id,paid,b.method,moscowDay(now),now,user.id,'Оплата при выдаче');if(inquiry){const status=this.rentalTerminal?.enabled&&paid>0?'payment_pending':'issued';this.db.prepare('UPDATE inquiries SET status=?,rental_id=?,actor=?,updated=?,revision=revision+1 WHERE id=?').run(status,id,user.id,now,inquiry.id);this.db.prepare('INSERT INTO inquiry_events(inquiry_id,actor,status,created) VALUES(?,?,?,?)').run(inquiry.id,user.id,status,now);}this.audit(user,'issue',id);this.db.exec('COMMIT');return id;
   }catch(e){this.db.exec('ROLLBACK');throw e;}
  }
  returned(id,user,now=Date.now(),revision){
@@ -145,7 +147,7 @@ export class AdminStore{
   const paid=amount(b.amount);b.method=b.method||'unspecified';if(!['cash','card','unspecified'].includes(b.method))fail('Выберите способ оплаты.');
   this.db.exec('BEGIN IMMEDIATE');try{
    const row=this.db.prepare('SELECT * FROM rentals WHERE id=?').get(b.id);if(!row)fail('Прокат не найден.',404);
-   if(row.initial_due||this.rentalTerminal?.hasPayment(row.id))fail('Оплата связана с CS50. Сумму нельзя переписывать; используйте возврат.',409);if(row.revision!==b.revision)fail('Запись уже изменена. Закройте форму, обновите список и повторите.',409);
+   if(row.initial_due||this.rentalTerminal?.hasPayment(row.id)||this.guestBills?.link('rental',row.id))fail('Оплата связана с CS50. Сумму нельзя переписывать; используйте возврат.',409);if(row.revision!==b.revision)fail('Запись уже изменена. Закройте форму, обновите список и повторите.',409);
    if(row.returned!==null&&departure>row.returned)fail('Отплытие не может быть позже возврата.');
    if(this.refunds.history('rental',b.id).length)fail('У аренды есть возврат денег. Оплату нельзя переписать; история сохранена.',409);
    const payments=this.db.prepare('SELECT * FROM payments WHERE rental_id=?').all(b.id);if(payments.length!==1)fail('Для этой записи требуется отдельная сверка платежей.',409);
@@ -160,7 +162,7 @@ export class AdminStore{
  }
  dashboard(day,user){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||!Number.isFinite(Date.parse(day))||new Date(day).toISOString().slice(0,10)!==day)fail('Неверная дата.');
-  const sql=`SELECT r.*,u.login issuedBy,v.login returnedBy,(SELECT method FROM payments p WHERE p.rental_id=r.id ORDER BY id LIMIT 1) method,(SELECT coalesce(sum(amount),0) FROM payments p WHERE p.rental_id=r.id) paid FROM rentals r JOIN admin_users u ON u.id=r.created_by LEFT JOIN admin_users v ON v.id=r.returned_by`;
+  const sql=`SELECT r.*,${this.guestBills?"(SELECT bill_id FROM guest_bill_lines WHERE kind='rental' AND source_id=r.id)":'NULL'} guestBillId,u.login issuedBy,v.login returnedBy,(SELECT method FROM payments p WHERE p.rental_id=r.id ORDER BY id LIMIT 1) method,(SELECT coalesce(sum(amount),0) FROM payments p WHERE p.rental_id=r.id) paid FROM rentals r JOIN admin_users u ON u.id=r.created_by LEFT JOIN admin_users v ON v.id=r.returned_by`;
   const reserved=this.db.prepare(sql+' WHERE r.returned IS NULL ORDER BY r.departed').all();const active=reserved.filter(r=>r.initial_due===0);const pendingRentals=this.db.prepare(sql+' WHERE r.initial_due>0 ORDER BY r.id').all();
   const returned=this.db.prepare(sql+" WHERE r.returned IS NOT NULL AND date(r.returned/1000,'unixepoch','+3 hours')=? ORDER BY r.returned DESC").all(day);
   const dayRentals=this.db.prepare(sql+" WHERE substr(r.departed,1,10)<=? AND (r.returned IS NULL OR date(r.returned/1000,'unixepoch','+3 hours')>=?) ORDER BY r.departed DESC,r.id DESC").all(day,day);
@@ -204,6 +206,9 @@ export function adminHandler(store,origin){return async(req,res,url)=>{
   if(req.method==='POST'&&url.pathname==='/api/admin/setup'){store.setup(b,ip);return reply(200,{ok:true});}
   if(req.method==='POST'&&url.pathname==='/api/admin/login'){const t=store.login(b,ip);return reply(200,{ok:true},{'Set-Cookie':cookie(t)});}
   const user=store.user(token);if(!user)return reply(401,{error:'Войдите в админку.'});
+  if(url.pathname.startsWith('/api/admin/guest-bills')){const g=store.guestBills;if(!g)return reply(503,{error:'Счета временно недоступны.'});if(req.method==='GET')return reply(200,url.searchParams.has('id')?g.get(Number(url.searchParams.get('id'))):g.list(user));const route=url.pathname.split('/').pop();if(route==='create')return reply(200,g.create(b,user));if(route==='pay')return reply(200,await g.begin(b,user));if(route==='cancel')return reply(200,g.cancel(b,user));if(route==='website-paid')return reply(200,g.manualWebsite(b,user));return reply(404,{error:'Неизвестное действие.'});}
+  if(url.pathname==='/api/admin/cash-ledger')return reply(200,req.method==='GET'?store.cashLedger.summary(user):store.cashLedger.change(b,user));
+  if(url.pathname==='/api/admin/clients.xlsx'&&req.method==='GET'){if(user.role!=='admin')return reply(403,{error:'Только администратор.'});res.writeHead(200,{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename=clients.xlsx','Cache-Control':'no-store'});res.end(clientsXlsx(store));return true;}
   if(url.pathname==='/api/admin/fleet-order'&&req.method==='GET'){if(user.role!=='admin')return reply(403,{error:'Только администратор.'});return reply(200,fleetOrder(store,fleet));}
   if(url.pathname==='/api/admin/fleet-order'&&req.method==='POST')return reply(200,saveFleetOrder(store,fleet,b,user));
   if(url.pathname==='/api/admin/schedule'&&req.method==='GET')return reply(200,store.schedule.list(url.searchParams.get('week'),user));
@@ -213,6 +218,7 @@ export function adminHandler(store,origin){return async(req,res,url)=>{
   if(url.pathname==='/api/admin/accounts/archive'&&req.method==='POST')return reply(200,store.accounts.archive(b,user));
   if(url.pathname==='/api/admin/tasks'&&req.method==='GET')return reply(200,{items:store.tasks.list(user)});
   if(url.pathname==='/api/admin/tasks/create'&&req.method==='POST')return reply(200,{id:store.tasks.create(b,user)});
+  if(url.pathname==='/api/admin/tasks/edit'&&req.method==='POST')return reply(200,store.tasks.edit(b,user));
   if(url.pathname==='/api/admin/tasks/complete'&&req.method==='POST')return reply(200,store.tasks.complete(b,user));
   if(url.pathname==='/api/admin/manual-sale'&&req.method==='POST')return reply(200,store.manualSale(b,user));
   if(url.pathname==='/api/admin/refunds'&&req.method==='GET')return reply(200,store.refunds.info(url.searchParams.get('kind'),Number(url.searchParams.get('id')),user));

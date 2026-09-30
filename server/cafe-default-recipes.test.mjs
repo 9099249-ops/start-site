@@ -29,7 +29,7 @@ function fixture() {
   };
   const balance = (name, amount) => {
     const item = good(name);
-    inventory.move({id: item.id, revision: item.revision, kind: 'SET', amount, requestId: randomUUID()}, owner);
+    inventory.move({id: item.id, revision: item.revision, kind: 'SET', reason:'Проверочный пересчёт', amount, requestId: randomUUID()}, owner);
   };
   const order = (name, quantity = 1, optionNames = [], variantId) => {
     const line = {itemId: dish(name).id, quantity, optionIds: optionNames.map(name => option(name).id), ...(variantId ? {variantId} : {})};

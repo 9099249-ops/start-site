@@ -17,12 +17,13 @@
  if(d?.startWorkspace==='route'&&frame===current){const u=normalize(d.url);if(u){frame.dataset.hash=u.hash;history.replaceState(null,'',u.pathname+u.search+u.hash);}}
  if(d?.startWorkspace==='session')location.reload();
  if(d?.startWorkspace==='expired')checkSession();
- if(d?.startWorkspace==='changed'){document.dispatchEvent(new Event('station-updated'));if(current&&current!==frame)signal(current,'refresh');}
+ if(d?.startWorkspace==='changed')document.dispatchEvent(new Event('station-updated'));
  });
  document.querySelector('#workspace-retry').onclick=()=>{if(!current)return;const old=current,url=location.href;frames.delete(old.dataset.route);old.remove();current=null;open(url,{push:false});};
  document.addEventListener('visibilitychange',()=>{if(current)activate(current,true);checkSession();});
  document.addEventListener('station-updated',()=>{if(current)signal(current,'refresh');});
- new MutationObserver(()=>{if(current)activate(current,true);}).observe(document.body,{attributes:true,attributeFilter:['class']});
+ let lastPos=document.body.classList.contains('pos-mode');
+ new MutationObserver(()=>{const pos=document.body.classList.contains('pos-mode');if(pos===lastPos)return;lastPos=pos;if(current)activate(current,true);}).observe(document.body,{attributes:true,attributeFilter:['class']});
  async function checkSession(){if(checking||document.hidden)return;checking=true;try{const r=await fetch('/api/admin/session',{cache:'no-store'});if(!r.ok)return;const d=await r.json(),id=d.user?String(d.user.id??d.user.login)+':'+d.user.role:null;if(sessionKnown&&id!==userId){location.reload();return;}sessionKnown=true;userId=id;}catch{}finally{checking=false;}}
  checkSession();setInterval(checkSession,30000);open(location.href,{push:false});
 })();

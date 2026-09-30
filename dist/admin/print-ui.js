@@ -22,7 +22,22 @@
   dialog.addEventListener('close',()=>{if(currentDialog===dialog){currentDialog=null;refreshDialog=null;}dialog.remove();});dialog.showModal();refreshDialog=reload;
   try{await reload();}catch(e){box.querySelector('[role=status]').textContent=e.message;}
  }
- function mountReport(container,{shiftId}={}){if(!container)return;container.replaceChildren();const box=panel();box.append(action('Напечатать отчёт',async()=>{const result=await api('report',shiftId?{shiftId}:{});await reportDialog(result.job.snapshot.shiftId);}));container.append(box);}
+ function reportPreview(info){
+  const latest=info.reports[0],s=latest?.snapshot||info.snapshot,p=latest?.payload||{date:s.date,shift_id:String(s.shiftId),preliminary:s.preliminary,revision:1,total:(s.totalCents/100).toFixed(2),transfers:s.employees.filter(e=>e.remainingCents>0).map(e=>({recipient:e.name,amount:(e.remainingCents/100).toFixed(2)})),as_of:new Date(s.asOf).toISOString(),report_id:`start-shift-${s.shiftId}-${s.preliminary?'preliminary':'final'}-v1`};
+  const rows=['КАФЕ СТАРТ',''];if(latest?.operation==='reprint')rows.push('*** ПОВТОР ***','');if(p.revision>1)rows.push('НОВАЯ РЕДАКЦИЯ '+p.revision);
+  rows.push(p.preliminary?'ПРЕДВАРИТЕЛЬНЫЙ ОТЧЁТ':'ИТОГОВЫЙ ОТЧЁТ','Дата: '+p.date,'Смена: '+p.shift_id,'','КАФЕ + ПРОКАТ','СУММА ЗА СМЕНУ: '+p.total+' ₽','','КОМУ СКОЛЬКО ПЕРЕВЕСТИ:');
+  for(const row of p.transfers)rows.push(row.recipient,row.amount+' ₽');if(!p.transfers.length)rows.push('Переводов нет');
+  rows.push('Всего к выплате: '+(p.transfers.reduce((sum,row)=>sum+Math.round(Number(row.amount)*100),0)/100).toFixed(2)+' ₽','Только за эту смену; выплаты учтены.');
+  if(p.preliminary)rows.push('Предварительно, до сверки кассы.');
+  if(p.as_of)rows.push('Снимок: '+new Date(p.as_of).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).replace(',','')+' МСК');
+  rows.push('','Отчёт: '+p.report_id);return rows.join('\n');
+ }
+ function mountReport(container,{shiftId,preview=false}={}){if(!container)return;container.replaceChildren();const box=panel(),print=action('Напечатать отчёт',async()=>{const result=await api('report',shiftId?{shiftId}:{});await reportDialog(result.job.snapshot.shiftId);});container.append(box);
+  if(!preview){box.append(print);return;}
+  const title=el('h3','На бумаге будет'),paper=el('pre'),note=el('small','Время получения и печати добавится при выходе отчёта.');paper.className='print-report-preview';paper.setAttribute('aria-label','Предпросмотр отчёта смены');
+  const status=box.querySelector('[role=status]');const reload=async()=>{print.disabled=true;retry.hidden=true;status.textContent='Загружаем отчёт…';try{const info=await api('report'+(shiftId?'?shiftId='+shiftId:''));paper.textContent=reportPreview(info);status.textContent=info.reports.length?'Показана сохранённая редакция отчёта.':'';print.disabled=false;}catch(e){status.textContent=e.message;retry.hidden=false;}};
+  const retry=action('Повторить загрузку',reload);retry.hidden=true;box.append(title,paper,note,retry,print);reload();
+ }
  function mountCafe(container,orderId,canEdit){if(!container)return;const box=panel();container.append(box);cafePanel=box;const reload=async()=>{const d=await api('cafe?orderId='+orderId);if(!box.isConnected)return;box.replaceChildren();const status=el('p',health(d.device));status.setAttribute('role','status');box.append(status);if(!d.jobs.length)box.append(el('small','Заданий печати для этого заказа нет. Автопечать действует для новых заказов после включения.'));for(const j of d.jobs){const title={NEW:'Заказ',ADD:'Дозаказ',CANCELLED:'Отмена',LOCATION:'Место'}[j.snapshot.eventKind]||'Чек';box.append(el('small',title),jobRow(j,canEdit,reload));}};cafeRefresh=reload;reload().catch(e=>box.querySelector('[role=status]').textContent=e.message);}
  setInterval(()=>{if(document.hidden)return;if(currentDialog?.open&&!currentDialog.querySelector('[data-print-reason]'))refreshDialog?.().catch(()=>{});if(cafePanel?.isConnected&&cafePanel.closest('dialog')?.open&&!cafePanel.querySelector('[data-print-reason]'))cafeRefresh?.().catch(()=>{});},15000);
  window.STARTPrint={mountReport,mountCafe};

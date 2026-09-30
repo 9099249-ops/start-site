@@ -12,13 +12,14 @@ export function extendRental(store,fleet,b,user,now=Date.now()){
  return transaction(store.db,()=>{
   const r=store.db.prepare('SELECT * FROM rentals WHERE id=?').get(b.id);
   if(r?.initial_due||store.rentalTerminal?.locked(r?.id))fail('Сначала завершите оплату на кассе.');if(!r||r.returned!==null||r.revision!==b.revision)fail('Аренда уже изменена. Обновите список.');
-  const end=r.expected_return+b.minutes*60000;
+  const bill=store.guestBills?.link('rental',r.id);if(bill&&!bill.paid_at)store.guestBills.editable(bill.id,user);const end=r.expected_return+b.minutes*60000;
   // An overdue rental continues to occupy stock indefinitely until physically returned.
   const a=availability(store.db,fleet,r.equipment,Math.max(now,localStamp(r.departed)),end>now?end:Number.MAX_SAFE_INTEGER,{ignoreRental:r.id,now,close:store.sms?.content?.live().close});
   if(a.available<r.quantity)fail('Продление пересекается с другой бронью. Выберите другое время.');
   const people=r.people??b.people;if(r.equipment==='big'&&(!Number.isSafeInteger(people)||people<1||people>20))fail('Укажите количество человек на Big SUP (1–20).',400);const fee=rentalPrice(store,r.equipment,r.quantity,b.minutes,people);if(r.equipment==='big'&&r.people===null)store.db.prepare('UPDATE rentals SET people=? WHERE id=?').run(people,r.id);const due=r.extension_due+fee;if(!Number.isSafeInteger(due)||due>100000000)fail('Слишком большая сумма продления.',400);store.db.prepare('UPDATE rentals SET expected_return=?,extension_due=?,revision=revision+1 WHERE id=?').run(end,due,r.id);
+  if(bill&&!bill.paid_at){store.db.prepare("UPDATE guest_bill_lines SET amount=amount+? WHERE kind='rental' AND source_id=?").run(fee,r.id);store.db.prepare('UPDATE guest_bills SET revision=revision+1 WHERE id=?').run(bill.id);store.db.prepare('UPDATE rentals SET extension_due=0 WHERE id=?').run(r.id);}
   log(store.db,r,user,'Продление на '+b.minutes+' мин',{expected_return:end,returned:null,extension_due:due,added_cents:fee},now);
-  return {id:r.id,expectedReturn:end,extensionDue:due,addedCents:fee,revision:r.revision+1};
+  return {id:r.id,expectedReturn:end,extensionDue:bill&&!bill.paid_at?0:due,addedCents:fee,revision:r.revision+1};
  });
 }
 

@@ -15,12 +15,13 @@ export class AqsiRental extends AqsiPilot {
  list(){return this.db.prepare("SELECT p.*,l.rental_id,l.phase FROM aqsi_rental p JOIN aqsi_rental_links l ON l.payment_id=p.id JOIN rentals r ON r.id=l.rental_id WHERE p.state NOT IN ('done','cash_done') AND (p.state<>'cancelled' OR (l.phase='issue' AND r.initial_due>0) OR (l.phase='extension' AND r.extension_due>0 AND r.returned IS NULL)) ORDER BY p.created").all().map(r=>({...this.view(r),rentalId:r.rental_id,phase:r.phase,paid:!!r.slip}));}
  async begin(b,u){
   staff(u);if(!Number.isSafeInteger(b.id)||!['issue','extension'].includes(b.phase))fail('Обновите аренду.',400);
+  if(this.admin.guestBills?.link('rental',b.id)&&!this.admin.guestBills.link('rental',b.id).paid_at)fail('Оплатите общий счёт гостя.');
   const previous=this.payment(b.id,b.phase);if(previous&&previous.state!=='cancelled')return this.view(previous);
   this.admin.workforce.requireOnDuty();let created=false;
   const payment=this.admin.workforce.tx(()=>{
    const old=this.payment(b.id,b.phase);if(old&&old.state!=='cancelled')return old;
    if(old&&b.retryPaymentId!==old.id)fail('Обновите отменённую оплату перед повтором.');
-   if(b.cash===true&&!old)fail('Сначала дождитесь подтверждения отмены на кассе.');
+   
    const r=this.db.prepare('SELECT * FROM rentals WHERE id=?').get(b.id),c=this.connection.read();
    if(!r||r.revision!==b.revision)fail('Аренда изменилась. Обновите список.');
    if(!this.enabled||!c.apiKey||!c.deviceId)fail('Касса не подключена.');
@@ -39,7 +40,7 @@ export class AqsiRental extends AqsiPilot {
   return this.view(this.row(payment.id));
  }
  cancel(b,u){staff(u);return this.admin.workforce.tx(()=>{
-  const r=this.db.prepare('SELECT * FROM rentals WHERE id=?').get(b.id);
+  const r=this.db.prepare('SELECT * FROM rentals WHERE id=?').get(b.id);if(this.admin.guestBills?.link('rental',b.id))fail('Отмените общий счёт гостя.');
   if(!r||r.initial_due<=0||r.revision!==b.revision||this.payment(r.id,'issue')&&this.payment(r.id,'issue').state!=='cancelled')fail('Отмена возможна до оплаты или после подтверждённой отмены на кассе.');
   this.db.prepare('UPDATE rentals SET initial_due=-1,returned=?,returned_by=?,revision=revision+1 WHERE id=?').run(Date.now(),u.id,r.id);
   this.db.prepare("UPDATE inquiries SET status='confirmed',rental_id=NULL,updated=?,revision=revision+1 WHERE rental_id=?").run(Date.now(),r.id);
@@ -52,7 +53,7 @@ export class AqsiRental extends AqsiPilot {
    if(due!==row.amount)fail('Нужна сверка суммы аренды.');
    const at=current.slip?Date.parse(JSON.parse(current.slip).content.dateTime):Date.now(),now=Date.now(),paidAt=Number.isFinite(at)&&at>=row.created-300000&&at<=now+300000?at:now;
    const note=link.phase==='extension'?'Доплата за продление при возврате':'Оплата при выдаче';
-   this.db.prepare('INSERT INTO payments(rental_id,amount,method,day,created,user_id,note) VALUES(?,?,?,?,?,?,?)').run(r.id,row.amount,'unspecified',new Date(paidAt+10800000).toISOString().slice(0,10),paidAt,row.actor,note);
+   this.db.prepare('INSERT INTO payments(rental_id,amount,method,day,created,user_id,note) VALUES(?,?,?,?,?,?,?)').run(r.id,row.amount,current.state==='cash_done'?'cash':'card',new Date(paidAt+10800000).toISOString().slice(0,10),paidAt,row.actor,note);
    if(link.phase==='issue')this.db.prepare('UPDATE rentals SET initial_due=0,revision=revision+1 WHERE id=?').run(r.id);
    else this.db.prepare('UPDATE rentals SET extension_due=0,returned=?,returned_by=?,revision=revision+1 WHERE id=?').run(paidAt,row.actor,r.id);
    this.db.prepare('UPDATE aqsi_rental_links SET accounted_at=? WHERE payment_id=?').run(paidAt,row.id);

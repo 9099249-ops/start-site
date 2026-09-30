@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -11,7 +11,7 @@ import {CafeStore} from './cafe.mjs';
 import {SmsStore} from './sms.mjs';
 import {PrintStore,printHandler,canonical,payloadHash,rubles} from './print.mjs';
 
-const date='2026-09-25',at=t=>Date.parse(date+'T'+t+':00+03:00'),u={id:1,role:'admin'},employee={id:2,role:'staff'},env={PRINT_ENABLED:'true',PRINT_AGENT_TOKEN:'test-print-token-'.repeat(4),PRINT_AGENT_DATABASE_ID:'test-database',PRINT_AGENT_ID:'station-printer-1'};
+const date='2026-09-25',at=t=>Date.parse(date+'T'+t+':00+03:00'),u={id:1,role:'admin'},employee={id:2,role:'staff'},waiter={id:3,role:'waiter'},env={PRINT_ENABLED:'true',PRINT_AGENT_TOKEN:'test-print-token-'.repeat(4),PRINT_AGENT_DATABASE_ID:'test-database',PRINT_AGENT_ID:'station-printer-1'};
 function fixture(file=':memory:'){
  const a=new AdminStore(file);if(!a.configured())a.db.exec("INSERT INTO admin_users VALUES(1,'admin','admin','unused'),(2,'ivan','staff','unused'),(3,'anna','waiter','unused')");
  const p=new PrintStore(a,{env:{...env}});a.printStore=p;return {a,p,close:()=>a.close()};
@@ -20,7 +20,7 @@ const check=(name,fn)=>test('Print: '+name,async()=>{const f=fixture();try{await
 function shift(f,{closed=true,day=date}={}){const start=f.a.workforce.action({requestId:randomUUID()},employee,'start',at('10:00')),id=f.a.openShift({day,cashStartCents:1000000,employeeIds:[2]},u,at('10:01'));if(closed){f.a.addWithdrawal({shiftId:id,amountCents:2000000,comment:'Директор'},u,at('12:00'));f.a.workforce.action({requestId:randomUUID(),sessionId:start.id},employee,'end',at('20:00'));f.a.closeShift({shiftId:id,cashEndCents:2000000,cashlessCents:5000000},u,at('21:00'));}return id;}
 function receipt(f){shift(f);return f.p.report({},u,at('21:10')).job;}
 function event(job,status='received',sequence=1){return {event_id:randomUUID(),job_id:job.id,attempt_id:'attempt-'+job.id,sequence,status,payload_hash:job.payload_hash,occurred_at:new Date().toISOString(),cups_id:null};}
-function cafe(f){const c=new CafeStore(f.a,new SmsStore(f.a,null,{}),{env:{}}),item=c.catalog().items.find(i=>/пеперони/i.test(i.name))||c.catalog().items[0],stock=c.stock.inventory.catalog(u).items.find(i=>/пеперони/i.test(i.name))||c.stock.inventory.catalog(u).items[0];c.stock.inventory.move({id:stock.id,revision:stock.revision,requestId:randomUUID(),kind:'SET',amount:'20'},u);c.stock.save({itemId:item.id,component:'base',revision:-1,ingredients:[{id:stock.id,amount:'1'}]},u);const body={requestId:randomUUID(),name:'Гость',fulfillment:'pickup',payment:'cash',items:[{itemId:item.id,quantity:1}],expectedTotalCents:item.priceCents};return {c,item,stock,body};}
+function cafe(f){const c=new CafeStore(f.a,new SmsStore(f.a,null,{}),{env:{}}),item=c.catalog().items.find(i=>/пеперони/i.test(i.name))||c.catalog().items[0],stock=c.stock.inventory.catalog(u).items.find(i=>/пеперони/i.test(i.name))||c.stock.inventory.catalog(u).items[0];c.stock.inventory.move({id:stock.id,revision:stock.revision,requestId:randomUUID(),kind:'SET',reason:'Проверочный пересчёт',amount:'20'},u);c.stock.save({itemId:item.id,component:'base',revision:-1,ingredients:[{id:stock.id,amount:'1'}]},u);const body={requestId:randomUUID(),name:'Гость',fulfillment:'pickup',payment:'cash',items:[{itemId:item.id,quantity:1}],expectedTotalCents:item.priceCents};return {c,item,stock,body};}
 
 check('kopecks convert to exact decimal rubles and canonical fixture matches Python',()=>{assert.equal(rubles(8000000),'80000.00');assert.equal(rubles(1),'0.01');assert.equal(rubles(-101),'-1.01');assert.throws(()=>rubles(1.5));const f=JSON.parse(readFileSync(new URL('../start-print-agent/examples/protocol-fixture.json',import.meta.url)));assert.equal(canonical(f.payload),f.canonical);assert.equal(payloadHash(f.payload),f.sha256);});
 check('final report uses saved cash total, subtracts paid only for this shift',f=>{const id=shift(f);f.a.pay({shiftId:id,userId:2,amountCents:50000},u,at('21:01'));const r=f.p.report({},u,at('21:02')).job;assert.equal(r.payload.total,'80000.00');assert.deepEqual(r.payload.transfers,[{recipient:'ivan',amount:'6000.00'}]);assert.equal(r.snapshot.employees[0].salaryCents,650000);assert.equal(r.payload.preliminary,false);assert.equal(f.a.db.prepare('SELECT count(*) n FROM payroll_payments').get().n,1);});
@@ -32,7 +32,33 @@ check('new revision is explicit and idempotent against the previous document',f=
 check('poll redelivers until ACK, events deduplicate and cannot regress state',f=>{const j=receipt(f);assert.equal(f.p.poll(at('21:11')).jobs[0].job_id,j.id);assert.equal(f.p.poll(at('21:12')).jobs[0].job_id,j.id);const a=event(j),b=event(j,'printed',3);f.p.events({events:[b]},at('21:13'));f.p.events({events:[a]},at('21:14'));assert.equal(f.p.job(j.id).status,'printed');assert.deepEqual(f.p.events({events:[a]}).accepted_event_ids,[a.event_id]);assert.equal(f.p.poll().jobs.length,0);assert.throws(()=>f.p.events({events:[{...a,status:'failed'}]}),/conflict/);assert.throws(()=>f.p.events({events:[event(j,'printing',4)]}),/transition/);});
 check('unoffered, wrong hash and wrong attempt events are rejected',f=>{const j=receipt(f),e=event(j);assert.throws(()=>f.p.events({events:[e]}),/conflict/);f.p.poll(at('21:11'));assert.throws(()=>f.p.events({events:[{...e,payload_hash:'wrong'}]}),/conflict/);f.p.events({events:[e]});assert.throws(()=>f.p.events({events:[{...event(j,'printed',2),attempt_id:'other'}]}),/conflict/);});
 check('manual reprint has one stable command across tabs and retries, with audit',f=>{const j=receipt(f);assert.throws(()=>f.p.reprint({jobId:j.id,reason:'Не вышел'},u),/Дождитесь/);f.p.poll();f.p.events({events:[event(j,'failed')]});const r=f.p.reprint({jobId:j.id,reason:'Принтер проверен'},u),r2=f.p.reprint({jobId:j.id,reason:'Повтор запроса'},u);assert.equal(r.job.id,r2.job.id);assert.equal(r.job.payload_hash,j.payload_hash);assert.equal(r.job.operation,'reprint');assert.equal(f.a.db.prepare("SELECT count(*) n FROM print_audit WHERE action='reprint'").get().n,1);});
-check('roles, paired DB and bearer token are enforced without exposing token',f=>{assert.throws(()=>f.p.report({},employee),e=>e.status===403);assert.throws(()=>f.p.reportInfo({id:3,role:'waiter'}),e=>e.status===403);const headers={authorization:'Bearer '+env.PRINT_AGENT_TOKEN,'x-print-agent-id':env.PRINT_AGENT_ID,'x-print-database-id':env.PRINT_AGENT_DATABASE_ID};assert.doesNotThrow(()=>f.p.authorize({headers}));assert.throws(()=>f.p.authorize({headers:{...headers,'x-print-database-id':'new-empty-db'}}),e=>e.status===409);assert.throws(()=>f.p.authorize({headers:{...headers,authorization:'wrong'}}),e=>e.status===401);assert.ok(!JSON.stringify(f.p.device()).includes(env.PRINT_AGENT_TOKEN));});
+for(const actor of [u,employee,waiter])check(actor.role+' can print and reprint shift reports with shared deduplication, reasons and audit',f=>{
+ const shiftId=shift(f,{closed:false});assert.equal(f.p.reportInfo(actor,shiftId,at('11:00')).snapshot.shiftId,shiftId);
+ const first=f.p.report({shiftId},actor,at('11:00')).job;assert.equal(first.payload.preliminary,true);
+ assert.equal(f.p.report({shiftId},waiter,at('11:01')).job.id,first.id);
+ const revision={shiftId,newRevision:true,previousDocumentId:first.document_id,reason:'Уточнён отчёт'};
+ assert.throws(()=>f.p.report({...revision,reason:' '},actor,at('11:02')),e=>e.status===400);
+ const second=f.p.report(revision,actor,at('11:03')).job;assert.equal(second.payload.revision,2);
+ assert.equal(f.p.report(revision,employee,at('11:04')).job.id,second.id);
+ const reprint={jobId:second.id,reason:'Принтер проверен'};
+ assert.throws(()=>f.p.reprint(reprint,actor,at('11:05')),e=>e.status===409);
+ f.p.poll(at('11:06'));f.p.events({events:[event(second,'printed')]},at('11:07'));
+ assert.throws(()=>f.p.reprint({...reprint,reason:''},actor,at('11:08')),e=>e.status===400);
+ const again=f.p.reprint(reprint,actor,at('11:09')).job;
+ assert.equal(f.p.reprint(reprint,waiter,at('11:10')).job.id,again.id);assert.equal(again.payload_hash,second.payload_hash);
+ assert.equal(f.p.reportInfo(employee,shiftId,at('11:11')).reports[0].id,again.id);
+ assert.deepEqual(f.a.db.prepare('SELECT actor,action FROM print_audit ORDER BY id').all().map(r=>[r.actor,r.action]),[[actor.id,'submit'],[actor.id,'submit'],[actor.id,'new_revision'],[actor.id,'reprint']]);
+ assert.equal(f.a.currentShift(date).closed_at,null);assert.equal(f.a.db.prepare('SELECT count(*) n FROM payroll_payments').get().n,0);
+});
+check('unauthenticated and unknown roles, paired DB and bearer token are enforced without exposing token',f=>{for(const [actor,status] of [[null,401],[{id:2,role:'viewer'},403]]){assert.throws(()=>f.p.report({},actor),e=>e.status===status);assert.throws(()=>f.p.reportInfo(actor),e=>e.status===status);assert.throws(()=>f.p.reprint({jobId:'any',reason:'Повтор'},actor),e=>e.status===status);}const headers={authorization:'Bearer '+env.PRINT_AGENT_TOKEN,'x-print-agent-id':env.PRINT_AGENT_ID,'x-print-database-id':env.PRINT_AGENT_DATABASE_ID};assert.doesNotThrow(()=>f.p.authorize({headers}));assert.throws(()=>f.p.authorize({headers:{...headers,'x-print-database-id':'new-empty-db'}}),e=>e.status===409);assert.throws(()=>f.p.authorize({headers:{...headers,authorization:'wrong'}}),e=>e.status===401);assert.ok(!JSON.stringify(f.p.device()).includes(env.PRINT_AGENT_TOKEN));});
+check('report access does not grant employees cafe reprints or salary settings',f=>{
+ const {c,body}=cafe(f),order=c.create(body,u,'test',at('12:00')),job=f.p.cafeJobs(order.id,u).jobs[0];
+ f.p.poll(at('12:01'));f.p.events({events:[event(job,'printed')]},at('12:02'));const b={jobId:job.id,reason:'Повтор заказа'};
+ for(const actor of [employee,waiter]){assert.throws(()=>f.p.reprint(b,actor,at('12:03')),e=>e.status===403);assert.throws(()=>f.a.shiftSettings(actor),e=>e.status===403);assert.throws(()=>f.a.payroll(actor),e=>e.status===403);}
+ const again=f.p.reprint(b,u,at('12:04'));assert.equal(again.duplicate,false);
+ for(const actor of [employee,waiter])assert.throws(()=>f.p.reprint(b,actor,at('12:05')),e=>e.status===403);
+ assert.equal(f.a.db.prepare("SELECT count(*) n FROM print_audit WHERE action='reprint'").get().n,1);
+});
 check('cafe NEW and ADD produce distinct immutable tickets, duplicate create does not reprint',f=>{const {c,item,body}=cafe(f),r=c.create(body,u,'test',at('12:00'));c.create(body,u,'test',at('12:01'));const first=f.p.cafeJobs(r.id,u).jobs[0];assert.equal(first.payload.order_source,'admin');assert.equal(first.payload.items.length,1);assert.equal(first.payload.items[0].price,rubles(item.priceCents));assert.equal(first.payload.fulfillment,'Заберут в кафе');const b={id:r.id,revision:r.revision,requestId:randomUUID(),items:body.items,expectedTotalCents:item.priceCents};c.append(b,u,at('12:02'));c.append(b,u,at('12:03'));const jobs=f.p.cafeJobs(r.id,u).jobs;assert.equal(jobs.length,2);assert.equal(jobs[1].payload.ticket_kind,'ADD');assert.equal(jobs[1].payload.items.length,1);assert.equal(jobs[1].payload.total,first.payload.total);assert.ok(!('phone' in first.payload));});
 check('cancel before delivery removes queued ticket, after offered emits cancellation',f=>{const {c,body}=cafe(f),r=c.create(body,u,'test',at('12:00'));c.status({id:r.id,revision:r.revision,status:'CANCELLED'},u);assert.equal(f.p.cafeJobs(r.id,u).jobs[0].status,'cancelled');assert.equal(f.p.poll().jobs.length,0);const next=c.create({...body,requestId:randomUUID()},u,'test',at('12:01'));f.p.poll();c.status({id:next.id,revision:next.revision,status:'CANCELLED'},u);const jobs=f.p.cafeJobs(next.id,u).jobs;assert.equal(jobs.length,2);assert.equal(jobs[1].payload.ticket_kind,'CANCELLED');});
 check('queue failure rolls back cafe order and stock consumption',f=>{const {c,body,stock}=cafe(f);const before=c.stock.inventory.row(stock.id).current_milli;f.p.enqueue=()=>{throw Error('queue unavailable');};assert.throws(()=>c.create(body,u,'test',at('12:00')),/queue unavailable/);assert.equal(f.a.db.prepare('SELECT count(*) n FROM cafe_orders').get().n,0);assert.equal(c.stock.inventory.row(stock.id).current_milli,before);});
@@ -49,6 +75,32 @@ check('cafe ticket preserves all allowed modifiers and the full customer comment
 test('Print: queue, snapshots and events persist across server restart',()=>{const dir=mkdtempSync(join(tmpdir(),'start-print-')),file=join(dir,'test.sqlite');let f=fixture(file);try{const j=receipt(f);f.p.poll();const e=event(j);f.p.events({events:[e]});f.close();f=fixture(file);assert.equal(f.p.report({},u,at('22:00')).job.id,j.id);assert.equal(f.p.job(j.id).status,'received');assert.equal(f.p.poll().jobs.length,0);assert.deepEqual(f.p.events({events:[e]}).accepted_event_ids,[e.event_id]);}finally{f.close();rmSync(dir,{recursive:true,force:true});}});
 test('Print: concurrent report requests from four independent connections create one job',async()=>{const dir=mkdtempSync(join(tmpdir(),'start-print-concurrent-')),file=join(dir,'test.sqlite');const f=fixture(file);try{shift(f);const ids=await Promise.all(Array.from({length:4},()=>new Promise((resolve,reject)=>{const worker=new Worker(new URL('./testing/print-report-worker.mjs',import.meta.url),{workerData:{file,env,now:at('21:10')}});worker.once('message',resolve);worker.once('error',reject);worker.once('exit',code=>{if(code)reject(Error('worker exit '+code));});})));assert.equal(new Set(ids).size,1);assert.equal(f.a.db.prepare('SELECT count(*) n FROM print_jobs').get().n,1);}finally{f.close();rmSync(dir,{recursive:true,force:true});}});
 check('HTTP auth, origin, body limits and status path',async f=>{receipt(f);const origin='https://spotsup.ru',handler=printHandler(f.p,f.a,origin);const server=http.createServer(async(req,res)=>{if(!await handler(req,res,new URL(req.url,origin))){res.writeHead(404);res.end();}});await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port;try{assert.equal((await fetch(base+'/api/print-agent/v1/jobs')).status,401);const headers={Authorization:'Bearer '+env.PRINT_AGENT_TOKEN,'X-Print-Agent-Id':env.PRINT_AGENT_ID,'X-Print-Database-Id':env.PRINT_AGENT_DATABASE_ID,'Content-Type':'application/json'};const r=await fetch(base+'/api/print-agent/v1/jobs',{headers});assert.equal(r.status,200);assert.equal(r.headers.get('cache-control'),'no-store');assert.equal((await r.json()).jobs.length,1);assert.equal((await fetch(base+'/api/admin/print/report')).status,401);assert.equal((await fetch(base+'/api/print-agent/v1/events',{method:'POST',headers,body:'x'.repeat(262145)})).status,413);}finally{await new Promise(r=>server.close(r));}});
+check('HTTP staff and waiter report access retains session, origin and body protection',async f=>{
+ shift(f);const origin='https://spotsup.ru',handler=printHandler(f.p,f.a,origin);
+ for(const actor of [u,employee,waiter])f.a.db.prepare('INSERT INTO admin_sessions VALUES(?,?,?)').run(createHash('sha256').update('print-'+actor.id).digest('hex'),actor.id,Date.now()+60000);
+ f.a.db.prepare('INSERT INTO admin_sessions VALUES(?,?,?)').run(createHash('sha256').update('expired-print').digest('hex'),employee.id,Date.now()-1);
+ const server=http.createServer(async(req,res)=>{if(!await handler(req,res,new URL(req.url,origin))){res.writeHead(404);res.end();}});await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ const base='http://127.0.0.1:'+server.address().port+'/api/admin/print/',headers=id=>({Cookie:'__Host-start_session=print-'+id,Origin:origin,'Content-Type':'application/json'}),post=(path,body,h)=>fetch(base+path,{method:'POST',headers:h,body:JSON.stringify(body)});
+ try{
+  for(const token of ['unknown-print','expired-print'])assert.equal((await fetch(base+'report',{headers:{Cookie:'__Host-start_session='+token}})).status,401);
+  let job;
+  for(const actor of [employee,waiter,u]){
+   const h=headers(actor.id),info=await fetch(base+'report',{headers:h});assert.equal(info.status,200);assert.equal((await info.json()).snapshot.preliminary,false);
+   assert.equal((await post('report',{}, {...h,Origin:'https://wrong.example'})).status,403);
+   assert.equal((await post('report',{}, {...h,Origin:''})).status,403);
+   assert.equal((await post('report',{}, {...h,'Content-Type':'text/plain'})).status,403);
+   assert.equal((await post('report',{padding:'x'.repeat(4096)},h)).status,413);
+   const response=await post('report',{},h);assert.equal(response.status,200);const result=await response.json();
+   if(job){assert.equal(result.job.id,job.id);assert.equal(result.duplicate,true);}else{job=result.job;assert.equal(result.duplicate,false);}
+   assert.equal((await post('reprint',{jobId:job.id,reason:'Повтор'}, {...h,Origin:'https://wrong.example'})).status,403);
+   assert.equal((await post('reprint',{jobId:job.id,reason:'Повтор'},h)).status,409);
+  }
+  f.p.poll();f.p.events({events:[event(job,'printed')]});
+  const response=await post('reprint',{jobId:job.id,reason:'Нужна копия'},headers(waiter.id));assert.equal(response.status,200);const result=await response.json();assert.equal(result.job.operation,'reprint');
+  const duplicate=await post('reprint',{jobId:job.id,reason:'Повтор запроса'},headers(employee.id));assert.equal(duplicate.status,200);assert.equal((await duplicate.json()).job.id,result.job.id);
+  assert.equal(f.a.db.prepare('SELECT count(*) n FROM print_jobs').get().n,2);
+ }finally{await new Promise(r=>server.close(r));}
+});
 check('complimentary kitchen ticket is zero, labelled and printed once; stock is consumed once',f=>{
  const {c,body,stock}=cafe(f),before=c.stock.inventory.row(stock.id).current_milli;
  const b={...body,fulfillment:'lounge',location:'Стол 5',complimentary:{reason:'owner'},expectedTotalCents:0};

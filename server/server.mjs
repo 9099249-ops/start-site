@@ -1,4 +1,5 @@
 import {serveWorkspace} from './admin-workspace.mjs';
+import {GuestBills} from './guest-bills.mjs';
 import {deskHealthHandler} from './desk-health.mjs';
 import {serveAdminAsset} from './admin-assets.mjs';
 import {AqsiConnection,aqsiHandler} from './aqsi.mjs';
@@ -49,6 +50,7 @@ if(aqsiCafe){const tick=()=>aqsiCafe.tick().catch(()=>console.error('aQsi cafe: 
 const aqsiRental=adminStore?new AqsiRental(adminStore,aqsi,{enabled:process.env.AQSI_RENTAL_ENABLED==='1'}):null;
 if(adminStore)adminStore.rentalTerminal=aqsiRental;
 if(aqsiRental){const tick=()=>aqsiRental.tick().catch(()=>console.error('aQsi rental: status check unavailable'));setInterval(tick,5000).unref();setTimeout(tick,1800).unref();}
+const guestBills=adminStore?new GuestBills(adminStore,aqsi,cafeStore):null;if(adminStore)adminStore.guestBills=guestBills;if(guestBills){const tick=()=>guestBills.tick().catch(()=>console.error('Guest bill payment check unavailable'));setInterval(tick,5000).unref();}
 const handleCafe=cafeHandler(cafeStore,adminStore,origin);
 const inventoryStore=adminStore?new InventoryStore(adminStore):null;
 const handleInventory=inventoryHandler(inventoryStore,adminStore,origin);

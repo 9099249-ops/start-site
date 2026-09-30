@@ -7,7 +7,7 @@ const required=(v,max)=>{const s=str(v,max);if(!s)fail('Заполните на�
 const int=(v,min=0)=>{if(!Number.isSafeInteger(v)||v<min)fail('Неверный идентификатор или версия.');return v;};
 const staff=u=>{if(!['admin','staff','waiter'].includes(u?.role))fail('Войдите в админку.',401);};
 const owner=u=>{staff(u);if(u.role!=='admin')fail('Изменение склада доступно только admin.',403);};
-const canAdjust=u=>u?.role==='admin'||u?.login==='station'&&['staff','waiter'].includes(u?.role);
+const canAdjust=u=>['admin','staff','waiter'].includes(u?.role);
 const stockOperator=u=>{staff(u);if(!canAdjust(u))fail('Нет доступа к изменению остатков.',403);};
 const MAX=999999999999;
 export function quantity(v,nullable=false){
@@ -69,7 +69,7 @@ export class InventoryStore{
  });}
  move(b,u){return this.write(b,u,'move',(hash,key)=>{
   const before=this.row(b.id);if(!before.active)fail('Товар в архиве.',409);if(int(b.revision)!==before.revision)fail('Остаток уже изменён. Обновите карточку.',409);
-  if(!['PURCHASE','RECEIPT','WRITE_OFF','SET'].includes(b.kind))fail('Выберите тип операции.');const amount=quantity(b.amount);if(b.kind!=='SET'&&amount===0)fail('Укажите количество больше нуля.');
+  if(!['PURCHASE','RECEIPT','WRITE_OFF','SET'].includes(b.kind))fail('Выберите тип операции.');if(b.kind==='SET'&&(!b.reason||!b.reason.trim()))fail('Укажите причину уточнения остатка.');const amount=quantity(b.amount);if(b.kind!=='SET'&&amount===0)fail('Укажите количество больше нуля.');
   let base=before.current_milli;if(base===null&&b.kind!=='SET'){if(b.baseline===undefined||b.baseline===null||b.baseline==='')fail('Сначала укажите фактический остаток до операции.');base=quantity(b.baseline);}
   const next=b.kind==='SET'?amount:base+(b.kind==='WRITE_OFF'?-amount:amount);if(next<0)fail('Нельзя списать больше текущего остатка.');if(next>MAX)fail('Слишком большое количество.');
   const now=Date.now();this.db.prepare('UPDATE inventory_items SET current_milli=?,manual_buy=?,updated_at=?,updated_by=?,revision=revision+1 WHERE id=?').run(next,b.kind==='PURCHASE'?0:before.manual_buy,now,u.id,b.id);

@@ -26,7 +26,7 @@ function fixture() {
   const option = name => cafe.catalog().groups.flatMap(g => g.options).find(o => o.name === name);
   const balance = (item, amount) => {
     const row = inventory.row(item.id);
-    inventory.move({id: row.id, revision: row.revision, kind: 'SET', amount, requestId: randomUUID()}, owner);
+    inventory.move({id: row.id, revision: row.revision, kind: 'SET', reason:'Проверочный пересчёт', amount, requestId: randomUUID()}, owner);
   };
   const unit = (item, name) => {
     const id = inventory.dictionary('inventory_units', name);

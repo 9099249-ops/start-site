@@ -36,7 +36,7 @@ function fixture() {
   const replacement = () => save('option:' + oatOption.id, [{id: oat.id, amount: '0.25', replacesId: milk.id}]);
   const balance = (good, amount) => {
     const row = inventory.row(good.id);
-    inventory.move({id: row.id, revision: row.revision, kind: 'SET', amount, requestId: randomUUID()}, owner);
+    inventory.move({id: row.id, revision: row.revision, kind: 'SET', reason:'Проверочный пересчёт', amount, requestId: randomUUID()}, owner);
   };
   const order = (options = [], quantity = 1, variantId) => {
     const line = {itemId: item.id, quantity, optionIds: options, ...(variantId ? {variantId} : {})};

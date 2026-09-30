@@ -9,14 +9,29 @@ export class SimpleShift {
   for(const [name,type] of [['declared_revenue_cents','INTEGER'],['close_request_id','TEXT']])if(!this.db.prepare('PRAGMA table_info(shifts)').all().some(c=>c.name===name))this.db.exec('ALTER TABLE shifts ADD COLUMN '+name+' '+type);
  }
  get enabled(){return this.work.env.START_SIMPLE_SHIFT==='1';}
- state(now=Date.now()){const shift=this.admin.currentShift(this.work.accountingDay(now));return {enabled:this.enabled,day:this.work.accountingDay(now),autoClose:!!this.work.auto.from,canStart:new Date(now+10800000).getUTCHours()>=8,needsOpening:!shift,shiftId:shift?.id||null,closed:!!shift?.closed_at};}
+ state(now=Date.now()){const shift=this.admin.currentShift(this.work.accountingDay(now));return {enabled:this.enabled,day:this.work.accountingDay(now),autoClose:!!this.work.auto.from,canStart:new Date(now+10800000).getUTCHours()>=8,needsOpening:!shift,...(!shift&&this.admin.cashLedger?{suggestedCashCents:this.admin.cashLedger.summary({role:'admin'},now).balanceCents??0}:{}),shiftId:shift?.id||null,closed:!!shift?.closed_at};}
  // Called inside the same transaction as the attendance mark.
- ensureOpening(b,u,now){if(!this.enabled)return;const state=this.state(now);if(!state.canStart)fail('Начать новую смену можно с 08:00 по Москве.',409);
+ ensureOpening(b,u,now,why='Начальный остаток при первом приходе'){if(!this.enabled)return;const state=this.state(now);if(!state.canStart)fail('Начать новую смену можно с 08:00 по Москве.',409);
   if(!state.needsOpening)return;
   if(b.cashStartCents===undefined)fail('Первый сотрудник указывает наличные в кассе на начало дня.',409,{needsCashStart:true});
   money(b.cashStartCents);const settings=this.work.daySettings(state.day,now,true);
   const id=Number(this.db.prepare('INSERT INTO shifts(day,opened_at,opened_by,cash_start_cents,salary_settings_json) VALUES(?,?,?,?,?)').run(state.day,now,u.id,b.cashStartCents,JSON.stringify(settings)).lastInsertRowid);
-  this.work.audit(u,'cash_shift_open',id,null,this.admin.currentShift(state.day),'Начальный остаток при первом приходе',now);
+  this.work.audit(u,'cash_shift_open',id,null,this.admin.currentShift(state.day),why,now);
+ }
+ openCash(b,u,now=Date.now()){
+  staff(u);if(!this.enabled)fail('Упрощённый рабочий день не включён.',409);money(b.cashStartCents);
+  if(!/^[a-f0-9-]{36}$/.test(b.requestId||'')||!/^\d{4}-\d{2}-\d{2}$/.test(b.day||''))fail('Обновите форму открытия кассы.');
+  const body=JSON.stringify({day:b.day,cashStartCents:b.cashStartCents});
+  return this.work.tx(()=>{
+   const old=this.db.prepare('SELECT * FROM cash_desk_actions WHERE request_id=?').get(b.requestId);
+   if(old){if(old.actor!==u.id||old.kind!=='opening'||old.body!==body)fail('Запрос уже использован.',409);return JSON.parse(old.result);}
+   const state=this.state(now);if(b.day!==state.day)fail('Рабочий день изменился. Откройте форму заново.',409);
+   if(!state.canStart)fail('Открыть кассу можно с 08:00 по Москве.',409);
+   if(state.closed)fail('Итог этого дня уже сохранён. Движение наличных остаётся доступно.',409);
+   this.ensureOpening(b,u,now,'Открытие кассы без отметки сотрудника');
+   const result={ok:true,shiftId:this.admin.currentShift(state.day).id,day:state.day};
+   this.db.prepare('INSERT INTO cash_desk_actions VALUES(?,?,?,?,?)').run(b.requestId,u.id,'opening',body,JSON.stringify(result));return result;
+  });
  }
  summary(u,now=Date.now(),requestedDay){const date=requestedDay||this.work.accountingDay(now);if(!/^\d{4}-\d{2}-\d{2}$/.test(date))fail('Проверьте дату.');const shift=this.admin.currentShift(date),calc=this.work.calculate(date,now);return {day:date,shift,registeredCents:calc.revenue.cents,employees:calc.employees,afterClose:calc.after_close||null,automaticClose:shift?this.db.prepare('SELECT * FROM automatic_shift_closures WHERE shift_id=?').get(shift.id)||null:null,withdrawals:shift?this.admin.shiftMovements(shift.id):[],canEdit:u.role==='admin'};}
  correctOpening(b,u,now=Date.now()){owner(u);money(b.cashStartCents);return this.work.tx(()=>{const s=this.db.prepare('SELECT * FROM shifts WHERE id=?').get(b.shiftId);if(!s||s.closed_at||s.cash_start_cents!==b.expectedCashStartCents)fail('Остаток изменился или итог уже сохранён. Обновите данные.',409);this.db.prepare('UPDATE shifts SET cash_start_cents=? WHERE id=?').run(b.cashStartCents,s.id);this.work.audit(u,'opening_balance_correct',s.id,{cashStartCents:s.cash_start_cents},{cashStartCents:b.cashStartCents},'Исправление начального остатка',now);return {ok:true};});}

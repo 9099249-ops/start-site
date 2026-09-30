@@ -52,3 +52,46 @@ body.cafe-integrated .menu-grid{display:grid;grid-template-columns:repeat(auto-f
 .cafe-integrated .cafe-legacy-pending button{min-height:44px;margin:4px 8px 4px 0;white-space:normal}
 @media(min-width:1100px){.cafe-integrated .compose-layout{grid-template-columns:minmax(0,1fr) 380px}.cafe-integrated #cart-dialog[open]{position:sticky;top:90px;inset-inline:auto;margin:0;width:100%;max-height:calc(100dvh - 110px);box-sizing:border-box;overflow:auto;box-shadow:none;border:1px solid #ded0c3;background:#fffaf3}.cafe-integrated #cart-dialog>.cafe-close,.cafe-integrated #cart-button{display:none!important}}
 @media(max-width:420px){.cafe-integrated .menu-item-bottom{gap:4px}.cafe-integrated .menu-item{padding:9px;gap:4px}.cafe-integrated .menu-item-bottom strong{font-size:12px}}
+
+/* A full-height category rail belongs only to the staff order composer. */
+.cafe-integrated .compose-menu-content{min-width:0}
+body.cafe-integrated #compose .menu-categories{gap:6px;padding:8px;margin:0;box-sizing:border-box;border:1px solid #e5dacf;border-radius:12px;background:#fffaf3;scrollbar-width:thin;overflow-x:hidden;overscroll-behavior:contain}
+body.cafe-integrated #compose .menu-categories a{display:flex;align-items:center;flex-shrink:0;min-height:54px;box-sizing:border-box;padding:12px 14px;border:1px solid transparent;border-radius:9px;background:transparent;color:#652e3d;white-space:normal;overflow-wrap:anywhere;font:600 16px/1.25 Arial,system-ui,sans-serif;text-decoration:none;touch-action:manipulation}
+body.cafe-integrated #compose .menu-categories a:hover{background:#f2e7e7;border-color:#dfcaca}
+body.cafe-integrated #compose .menu-categories a[aria-current]{background:#602b38;color:white;box-shadow:0 2px 5px #602b381c}
+body.cafe-integrated #compose .menu-categories a:focus-visible{outline:3px solid #b47d88;outline-offset:-3px}
+body.cafe-integrated #compose .menu-cat{scroll-margin-top:calc(var(--desk-chrome-height,0px) + 16px)}
+@media(min-width:760px){
+ body.cafe-integrated #compose .cafe-wrap{display:grid;grid-template-columns:184px minmax(0,1fr);gap:16px;align-items:start;padding-bottom:0}
+ body.cafe-integrated #compose .compose-menu-content{padding-bottom:76px}
+ body.cafe-integrated #compose .menu-categories{flex-direction:column;position:sticky;top:calc(var(--desk-chrome-height,0px) + 12px);height:var(--categories-available-height,calc(100dvh - var(--desk-chrome-height,0px) - 160px));max-height:var(--categories-available-height,calc(100dvh - var(--desk-chrome-height,0px) - 160px));min-height:0;overflow-y:auto;z-index:5}
+}
+@media(max-width:759px){
+ body.cafe-integrated #compose .cafe-wrap{display:flex;flex-direction:column;gap:12px}
+ body.cafe-integrated #compose .compose-menu-content{display:contents}
+ body.cafe-integrated #compose .cafe-search{order:0;width:100%}
+ body.cafe-integrated #compose .menu-categories{order:1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));position:static;width:100%;overflow:visible}
+ body.cafe-integrated #compose .menu-categories a{min-height:48px;padding:10px;font-size:14px}
+ body.cafe-integrated #compose #menu-list{order:2;width:100%}
+}
+
+/* The new staff order keeps its destination and actions visible while only the
+   item list needs to scroll. Extra details live outside the compact checkout. */
+body.cafe-integrated #cart-dialog.cafe-compact-order>.cafe-fulfillment-choices,
+body.cafe-integrated #cart-dialog.cafe-compact-order>.cafe-muted{flex:none}
+body.cafe-integrated #cart-dialog.cafe-compact-order>.cafe-muted{margin:0 0 6px}
+body.cafe-integrated #cart-dialog.cafe-compact-order>#checkout{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 8px;flex:none}
+body.cafe-integrated #cart-dialog.cafe-compact-order>#checkout>*{grid-column:1/-1}
+body.cafe-integrated #cart-dialog.cafe-compact-order #staff-place-label{grid-column:1/-1;margin:4px 0}
+body.cafe-integrated #cart-dialog.cafe-compact-order #location-label{display:none!important}
+body.cafe-integrated #cart-dialog.cafe-compact-order #checkout:has(#staff-place-label[hidden]) #location-label{grid-column:1/-1}
+body.cafe-integrated #cart-dialog.cafe-compact-order #place-later{display:none}
+body.cafe-integrated #cart-dialog.cafe-compact-order #checkout-extra[hidden]{display:none!important}
+body.cafe-integrated #cart-dialog .cafe-order-options{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:6px;margin-bottom:6px;align-items:start}
+body.cafe-integrated #cart-dialog .cafe-order-options>.cafe-fulfillment-choices{margin:0}
+body.cafe-integrated #cart-dialog #free-order-options.cafe-employee-order{min-width:0;padding:0;border:0}
+body.cafe-integrated #cart-dialog #free-order-options.cafe-employee-order>button{width:100%;min-height:50px;margin:0;padding:7px 6px;border:1px solid var(--line,#dfe2e4);border-radius:5px;background:#fff;color:var(--ink,#172c47);text-align:center;font-size:13px!important;line-height:1.3;overflow-wrap:anywhere}
+body.cafe-integrated #cart-dialog #free-order-options.cafe-employee-order>button[aria-pressed=true]{background:var(--accent,#852a44);border-color:var(--accent,#852a44);color:#fff;font-weight:600}
+body.cafe-integrated #cart-dialog .cafe-employee-order>p{margin:4px 0}
+body.cafe-integrated #cart-dialog.cafe-employee-selected .cart-footer .cafe-guest-action{display:none!important}
+body.cafe-integrated #cart-dialog.cafe-employee-selected #staff-place-label{display:none!important}

@@ -13,7 +13,7 @@ function fixture(){
   const cafe=new CafeStore(admin,new SmsStore(admin,null,{}),{env:{}}),stock=cafe.stock;
   const dish=name=>cafe.catalog().items.find(i=>i.name===name);
   const item=name=>stock.inventory.catalog(owner).items.find(i=>i.name===name);
-  const amount=(name,value)=>{const i=stock.inventory.row(item(name).id);stock.inventory.move({id:i.id,revision:i.revision,kind:'SET',amount:value,requestId:randomUUID()},owner);};
+  const amount=(name,value)=>{const i=stock.inventory.row(item(name).id);stock.inventory.move({id:i.id,revision:i.revision,kind:'SET',reason:'Проверочный пересчёт',amount:value,requestId:randomUUID()},owner);};
   const menuChange=change=>{const catalog=cafe.catalog();change(catalog);cafe.saveCatalog(catalog,owner);};
   return {admin,cafe,stock,dish,item,amount,menuChange};
 }
