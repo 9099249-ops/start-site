@@ -6,6 +6,7 @@ import {SmsStore} from './sms.mjs';
 import {CafeStore} from './cafe.mjs';
 import {AqsiPilot} from './aqsi-pilot.mjs';
 import {AqsiCafe} from './aqsi-cafe.mjs';
+import {CafeBoard} from './cafe-board.mjs';
 import {fillTestCafeStock} from './testing/cafe-stock-fixture.mjs';
 const u={id:1,role:'admin'},staff={id:2,role:'staff'},waiter={id:3,role:'waiter'};
 function fixture(){
@@ -104,6 +105,19 @@ test('Cash after cancellation accounts once, releases kitchen once, never sends 
   const order=f.c.order(r.id,u);assert.equal(order.status,'ACCEPTED');assert.ok(order.details.terminalPaidAt);assert.equal(order.details.manualCashReceipt,true);assert.equal(order.terminalPayment.paid,true);assert.equal(order.terminalPayment.state,'cash_done');assert.equal(f.calls.length,before);assert.equal(f.p.terminalBusy(),false);
   assert.equal(f.a.db.prepare("SELECT count(*) n FROM cafe_order_events WHERE order_id=? AND kind='PAID'").get(r.id).n,1);assert.equal(f.a.db.prepare("SELECT count(*) n FROM cafe_order_events WHERE order_id=? AND kind='NEW'").get(r.id).n,1);
   f.c.status({id:r.id,revision:order.revision,status:'DELIVERED'},staff);assert.equal(f.c.order(r.id,u).details.terminalPaidAt,order.details.terminalPaidAt);
+ }finally{f.a.close();}
+});
+test('Cash preparation stays on the board until issued and retries never repeat money, stock or kitchen printing',async()=>{
+ const f=fixture();try{
+  const printed=[];f.a.printStore={cafeEvent:id=>printed.push(f.a.db.prepare('SELECT kind FROM cafe_order_events WHERE id=?').get(id).kind)};
+  const r=f.c.create({...f.body(),quickSale:false},staff),board=new CafeBoard(f.c,{}),stock=f.a.db.prepare('SELECT * FROM inventory_transactions').all();
+  assert.equal(board.snapshot().orders.some(o=>o.id===r.id),false);
+  const body={id:r.id,revision:r.revision,cash:true};await f.p.begin(body,staff);await f.p.begin(body,staff);
+  let live=f.c.order(r.id,staff);assert.equal(live.status,'ACCEPTED');assert.equal(board.snapshot().orders.find(o=>o.id===r.id).status,'cooking');
+  assert.equal(f.calls.length,0);assert.equal(printed.filter(x=>x==='NEW').length,1);assert.deepEqual(f.a.db.prepare('SELECT * FROM inventory_transactions').all(),stock);
+  assert.equal(f.a.db.prepare("SELECT count(*) n FROM cafe_order_events WHERE order_id=? AND kind='PAID'").get(r.id).n,1);
+  live=f.c.status({id:r.id,revision:live.revision,status:'READY'},staff);assert.equal(board.snapshot().orders.find(o=>o.id===r.id).status,'ready');
+  f.c.status({id:r.id,revision:live.revision,status:'DELIVERED'},staff);assert.equal(board.snapshot().orders.some(o=>o.id===r.id),false);
  }finally{f.a.close();}
 });
 test('Unknown result cannot be replaced by cash or cancelled and stays globally locked',async()=>{

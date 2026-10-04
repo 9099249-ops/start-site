@@ -7,6 +7,7 @@ import {AdminStore} from './admin.mjs';
 import {CafeStore} from './cafe.mjs';
 
 const source=readFileSync(new URL('../dist/cafe.js',import.meta.url),'utf8');
+const guestsSource=readFileSync(new URL('../dist/admin/guest-bills.js',import.meta.url),'utf8');
 const item={id:'coffee',name:'Американо',description:'',priceCents:35000,variants:[],groupIds:['sugar'],tags:[],active:true,categoryId:'drinks'};
 const catalog={items:[item],categories:[{id:'drinks',name:'Напитки',active:true,sort:1}],groups:[{id:'sugar',name:'Сахар',active:true,min:0,max:1,options:[{id:'none',name:'Без сахара',priceCents:0,active:true},{id:'one',name:'1 пакетик',priceCents:0,active:true}]}],settings:{enabled:true,fulfillments:['pickup','lounge','house'],payments:['cash']}};
 const line=(quantity=1)=>({itemId:'coffee',quantity,variantId:null,optionIds:[],comment:''});
@@ -44,6 +45,16 @@ function fixture({search='',staffMode=true,integrated=staffMode,local=storage(),
  return {api,get,elements,document,context,local,session,requests,confirmations,item:api.quickItem?item:null,submit:(button='checkout-button')=>form.onsubmit({preventDefault(){},submitter:get('#'+button)}),submitDish:()=>get('#dish-form').onsubmit({preventDefault(){}})};
 }
 
+for(const [label,quickSale] of [['Получено наличными',true],['Наличные и в работу',false]])test('Cash checkout: '+label+' submits the selected kitchen flow',async()=>{
+ const events=[],f=fixture({fetcher:async url=>({ok:true,status:200,json:async()=>url.endsWith('/quote')?{totalCents:35000,prepMinutes:20}:{id:31,status:'NEW',details:{terminalPaymentRequired:true}}})});
+ f.document.dispatchEvent=e=>events.push(e);f.api.seed({cart:[line()]});f.api.cartLines();const form=f.get('#checkout'),buttons=[];form.reportValidity=()=>true;form.requestSubmit=submit=>f.submit(submit.id);
+ const query=f.document.querySelector;f.document.querySelector=s=>s==='#issue-form'||s==='#guest-bill-banner'||s==='#guest-bill-existing'?null:s==='.cafe-integrated'?f.document.body:query(s);
+ f.document.querySelectorAll=s=>s==='.cafe-cash-action'?buttons.filter(b=>b.classList.contains('cafe-cash-action')):[];
+ Object.assign(f.context,{paintCount(){},MutationObserver:class{observe(){}},button(parent,text,action){const b=f.document.createElement('button');b.textContent=text;b.onclick=action;b.dataset={};parent.append(b);buttons.push(b);return b;}});
+ runInNewContext(guestsSource.slice(guestsSource.indexOf('function updateCafeContext()'),guestsSource.indexOf('window.STARTGuests='))+'mount();',f.context);
+ const action=buttons.find(b=>b.textContent===label);assert.equal(action.hidden,false);await action.onclick();
+ const order=f.requests.find(r=>r.url.endsWith('/orders'));assert.equal(order.body.cashRequested,true);assert.equal(order.body.quickSale,quickSale);assert.equal(events[0].detail.cashRequested,true);assert.equal(events[0].detail.payNow,true);
+});
 test('Staff draft baskets never borrow a new order, another append, or another user',async()=>{
  const local=storage();local.setItem('cafe-staff-cart',JSON.stringify([line(9)]));
  const first=fixture({local});assert.equal(first.api.state().cart.length,0);await first.api.quickAdd(item,first.get('#add'));assert.equal(first.api.state().cart.length,1);
