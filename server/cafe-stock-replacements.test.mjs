@@ -290,3 +290,18 @@ test('Stock replacements: missing, disconnected, inactive, or sold-out replaceme
     } finally { f.admin.close(); }
   }
 });
+check('Coffee defaults cannot duplicate the base; two coffees consume milk exactly once and retry consumes nothing',f=>{
+ f.base();f.balance(f.coffee,'1');f.balance(f.milk,'2');
+ for(const name of ['Без сахара','Обычное']){
+  const component='option:'+f.option(name).id;
+  assert.throws(()=>f.save(component,[{id:f.milk.id,amount:'0.25'}]),e=>e.status===400);
+  f.save(component,[]);
+ }
+ const b=f.order([f.option('Без сахара').id,f.option('Обычное').id],2);
+ const created=f.cafe.create(b,staff);
+ assert.equal(f.inventory.row(f.milk.id).current_milli,1500);
+ assert.equal(f.inventory.row(f.coffee.id).current_milli,964);
+ const duplicate=f.cafe.create(b,staff);
+ assert.equal(duplicate.id,created.id);assert.equal(duplicate.duplicate,true);
+ assert.equal(f.inventory.row(f.milk.id).current_milli,1500);
+});

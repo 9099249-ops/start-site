@@ -198,3 +198,26 @@ test('The editor consumes the real stock metadata for ordinary and replacement c
   setStock('Молоко обычное','0');const replacement=fixture({fetcher}),secondMenu=cafe.publicMenu(),oatCoffee=secondMenu.items.find(i=>i.id===coffee.id);replacement.api.seed({menu:secondMenu});assert.equal(replacement.api.quickItem(oatCoffee),false);replacement.api.openDish(oatCoffee);assert.equal(replacement.get('#dish-add').disabled,true);chooseDishInput(replacement,'coffee_milk',oat.id);await replacement.submitDish();assert.equal(replacement.api.state().cart.length,1);assert.equal(requirements.has(good('Молоко обычное').id),false);assert.equal(requirements.get(good('Молоко овсяное').id).amount,220);
  }finally{admin.close();}
 });
+
+test('External register checkout opens manual confirmation and never asks to pay on CS50',async()=>{
+ const events=[],f=fixture({fetcher:async(url)=>({ok:true,status:200,json:async()=>url.endsWith('/quote')?{totalCents:35000,prepMinutes:20}:{id:25,status:'NEW',details:{terminalPaymentRequired:true}}})});f.document.dispatchEvent=e=>events.push(e);f.get('#manual-register-order').id='manual-register-order';f.api.seed({cart:[line()]});await f.submit('manual-register-order');const order=f.requests.find(r=>r.url.endsWith('/orders'));assert.equal(order.body.manualPaidRequested,true);assert.equal(events.length,1);assert.equal(events[0].detail.manualPaidRequested,true);assert.equal(events[0].detail.payNow,false);
+});
+
+test('Selected guest bill changes action, binds added dishes and never creates a quick sale',async()=>{const events=[],f=fixture({fetcher:async(url)=>({ok:true,status:200,json:async()=>url.endsWith('/quote')?{totalCents:35000,prepMinutes:20}:{id:30,status:'NEW',details:{guestBillId:7,terminalPaymentRequired:true}}})});f.document.dispatchEvent=e=>events.push(e);f.api.seed({cart:[line()]});assert.equal(f.context.window.STARTCafeGuest.set({id:7}),true);assert.match(f.get('#checkout-button').textContent,/Добавить в счёт/);await f.submit();const b=f.requests.find(r=>r.url.endsWith('/orders')).body;assert.equal(b.guestBillId,7);assert.equal(b.quickSale,false);assert.equal(events[0].detail.guestBillId,7);assert.equal(events[0].detail.payNow,false);});
+test('Uncertain guest bill submission cannot be reassigned to another guest or separate order',async()=>{const f=fixture({fetcher:async(url)=>{if(url.endsWith('/quote'))return {ok:true,status:200,json:async()=>({totalCents:35000,prepMinutes:20})};throw Error('offline');}});f.api.seed({cart:[line()]});f.context.window.STARTCafeGuest.set({id:7});await f.submit();assert.equal(f.context.window.STARTCafeGuest.set({id:8}),false);assert.equal(f.context.window.STARTCafeGuest.set(null),false);assert.equal(f.get('#checkout').dataset.guestBill,'7');const pending=JSON.parse(f.session.getItem(f.api.state().pendingKey));assert.equal(pending.guestBillId,7);});
+
+test('Long ingredient list filters after two letters, keeps selection and resets search for another dish',()=>{
+ const f=fixture(),menu=structuredClone(catalog),tea=menu.items[0];tea.groupIds=[];
+ tea.variants=Array.from({length:30},(_,i)=>({id:'tea'+i,name:i===0?'Зелёный чай':i===1?'Ассам':'Чай '+i,active:true,priceCents:0}));
+ f.api.seed({menu});f.api.openDish(tea);
+ const search=()=>f.get('#dish-options').querySelectorAll('input').find(x=>x.type==='search');
+ const options=()=>f.get('#dish-options').querySelectorAll('input').filter(x=>x.type==='radio');
+ search().value='а';search().oninput();assert.equal(options().filter(x=>!x.parentElement.hidden).length,30);
+ search().value='АС';search().oninput();assert.deepEqual(options().filter(x=>!x.parentElement.hidden).map(x=>x.value),['tea1']);
+ options().find(x=>x.value==='tea1').checked=true;
+ f.api.refreshDishStock();assert.equal(search().value,'АС');assert.equal(options().find(x=>x.value==='tea1').checked,true);
+ search().value='зеле';search().oninput();assert.deepEqual(options().filter(x=>!x.parentElement.hidden).map(x=>x.value),['tea0']);
+ search().value='нетсовпадений';search().oninput();assert.equal(options().filter(x=>!x.parentElement.hidden).length,0);assert.equal(options().find(x=>x.value==='tea1').checked,true);
+ search().value='';search().oninput();assert.equal(options().filter(x=>!x.parentElement.hidden).length,30);
+ f.api.openDish(tea);assert.equal(search().value,'');
+});

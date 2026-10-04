@@ -1,0 +1,19 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+import {webcrypto} from 'node:crypto';
+const source=readFileSync(new URL('../dist/admin/refunds.js',import.meta.url),'utf8');
+function fixture({remaining=1,pending=null}={}){
+ class Element{constructor(tag,text){this.tagName=tag.toUpperCase();this.children=[];this.value='';this.textContent=text||'';this.disabled=false;this.listeners={};}append(...nodes){this.children.push(...nodes);}replaceChildren(...nodes){this.children=nodes;}setAttribute(k,v){this[k]=v;}addEventListener(k,fn){this.listeners[k]=fn;}}
+ const container=new Element('div'),requests=[],events=[],cache=new Map(),key='refund-pending-2-cafe-102';if(pending)cache.set(key,JSON.stringify(pending));
+ const info={paidCents:70000,refundedCents:remaining?0:70000,remainingCents:remaining?70000:0,lines:[{index:0,name:'Пицца',unitCents:70000,quantity:1,remainingQuantity:remaining}],history:[]};
+ const window={},document={createElement:t=>new Element(t),dispatchEvent:e=>events.push(e.type)},sessionStorage={getItem:k=>cache.get(k),setItem:(k,v)=>cache.set(k,v),removeItem:k=>cache.delete(k)};
+ vm.runInNewContext(source,{window,document,sessionStorage,crypto:webcrypto,Event,fetch:async(url,options)=>{requests.push({url,...options});return {ok:true,json:async()=>info};}});
+ window.STARTRefunds.mount(container,'cafe',102,2);const box=container.children[0];box.open=true;box.listeners.toggle();
+ const ready=async()=>{await new Promise(r=>setImmediate(r));};
+ const nodes=()=>{const all=[];const walk=n=>{all.push(n);for(const c of n.children||[])walk(c);};walk(container);return all;};return {ready,nodes,requests,cache,key};
+}
+test('Cafe refund chooses portions and sends 700 rubles for one 700-ruble pizza',async()=>{const f=fixture();await f.ready();const nodes=f.nodes(),form=nodes.find(n=>n.tagName==='FORM'),quantity=nodes.find(n=>n['aria-label']==='Количество для возврата: Пицца'),total=nodes.find(n=>n.tagName==='P'&&n.textContent.startsWith('Вернуть гостю:'));assert.equal(quantity.tagName,'SELECT');assert.deepEqual(quantity.children.map(n=>n.value),['0','1']);assert.match(quantity.children[1].textContent,/1 шт.*700/);quantity.value='1';form.oninput();assert.match(total.textContent,/700/);assert.ok(!total.textContent.includes('490'));const method=nodes.find(n=>n.tagName==='SELECT'&&n!==quantity);method.value='cash';nodes.find(n=>n.tagName==='TEXTAREA').value='Отмена';await form.onsubmit({preventDefault(){}});await form.onsubmit({preventDefault(){}});const post=f.requests.find(r=>r.method==='POST'),body=JSON.parse(post.body);assert.equal(body.amountCents,70000);assert.equal(body.lines[0].quantity,1);});
+test('Invalid quantity never displays 490000 rubles and never saves a refund',async()=>{const f=fixture();await f.ready();const nodes=f.nodes(),form=nodes.find(n=>n.tagName==='FORM'),quantity=nodes.find(n=>n['aria-label']==='Количество для возврата: Пицца');quantity.value='700';form.oninput();assert.ok(nodes.some(n=>n.textContent==='Выберите доступное количество для возврата.'));await form.onsubmit({preventDefault(){}});assert.equal(f.requests.filter(r=>r.method==='POST').length,0);});
+test('An uncertain saved refund can retry after server already reduced remaining portions',async()=>{const pending={requestId:webcrypto.randomUUID(),kind:'cafe',id:102,amountCents:70000,lines:[{index:0,quantity:1}],method:'cash',reason:'Отмена'},f=fixture({remaining:0,pending});await f.ready();const nodes=f.nodes(),form=nodes.find(n=>n.tagName==='FORM'),quantity=nodes.find(n=>n['aria-label']==='Количество для возврата: Пицца');assert.equal(quantity.disabled,true);assert.equal(quantity.value,'1');await form.onsubmit({preventDefault(){}});assert.deepEqual(JSON.parse(f.requests.find(r=>r.method==='POST').body),pending);});

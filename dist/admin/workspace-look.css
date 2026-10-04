@@ -30,3 +30,10 @@ body.cafe-integrated .menu-grid{grid-template-columns:repeat(auto-fill,minmax(mi
 @media(max-width:700px){body[class] .work-bar{gap:4px 6px}body[class] .work-bar>span:not(.work-error){max-width:50px}body[class] .work-bar .active-people{flex-basis:100%}body[class] .work-bar>.work-account{margin-left:auto}}
 
 .cafe-integrated .cafe-choice-hint{font-size:11px;color:#713645;line-height:1.25}.cafe-integrated .menu-item-bottom{flex-direction:column;align-items:flex-end;gap:8px}.cafe-integrated #cart-lines .cart-title{display:block;min-height:44px;width:100%;padding:5px 0;border:0;background:transparent;text-align:left;font:600 15px/1.3 Arial,system-ui,sans-serif;color:#402630;cursor:pointer}.cafe-integrated #cart-lines .cart-title::after{content:' ✎';font-size:16px;color:#866371}.cafe-integrated #cart-lines .cart-title:hover{color:#713645;text-decoration:underline}.cafe-integrated #cart-lines .cart-title:focus-visible{outline:2px solid #713645;outline-offset:2px}.cafe-integrated #cart-lines .cart-title:disabled{cursor:default;opacity:.55}@media(max-width:700px){.cafe-integrated .menu-item-bottom{align-items:flex-start;margin-top:auto}.cafe-integrated .cafe-choice-hint{font-size:11px}}
+
+/* Keep the existing-order panel within the viewport even with refunds expanded. */
+body.theme-cafe #order-dialog[open]{display:flex;flex-direction:column;height:calc(100dvh - var(--desk-chrome-height,0px) - 20px);max-height:calc(100dvh - var(--desk-chrome-height,0px) - 20px);min-height:0;overflow:hidden;box-sizing:border-box}
+body.theme-cafe #order-dialog>.close{position:absolute;top:10px;right:12px;float:none;z-index:2}
+body.theme-cafe #order-detail{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:32px 4px 4px 0;scrollbar-gutter:stable}
+body.theme-cafe #detail-error{flex:none;max-height:72px;overflow:auto;margin:6px 0 0}
+@media(max-width:1099px){body.theme-cafe #order-dialog[open]{height:100dvh;max-height:100dvh}}

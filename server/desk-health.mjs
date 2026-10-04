@@ -11,6 +11,6 @@ export function deskHealthHandler(admin,printer,aqsi){
   if(!user)return reply(401,{error:'Войдите в админку.'});if(!['admin','staff','waiter'].includes(user.role))return reply(403,{error:'Нет доступа.'});
   const device=printer?.device(),health=device?.health;
   const print=!device?.configured||!device?.enabled?{state:'unconfigured',message:'Принтер не настроен'}:!device.online?{state:'error',message:'Принтер недоступен. Проверьте Raspberry Pi и подключение.'}:!health?.cups||!health?.printer_configured||!health?.printing_enabled?{state:'error',message:'Печать недоступна. Проверьте принтер.'}:{state:'ok',message:'Принтер: агент на связи'};
-  return reply(200,{printer:print,terminal:await terminal(),checkedAt:Date.now(),note:'Связь с API не подтверждает готовность самой CS50; статус оплаты проверяется отдельно.'});
+  return reply(200,{printer:{...print,localIp:health?.local_ip??null,localIps:health?.local_ips??[],lastSeen:device?.lastSeen??null,online:device?.online===true},terminal:await terminal(),checkedAt:Date.now(),note:'Связь с API не подтверждает готовность самой CS50; статус оплаты проверяется отдельно.'});
  };
 }

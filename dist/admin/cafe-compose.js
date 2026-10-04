@@ -19,13 +19,13 @@ window.openCafeComposer=()=>loading||(loading=(async()=>{
   const contact=host.querySelector('#checkout-contact'),timing=form.elements.timing.closest('.cafe-form-grid'),comment=form.elements.comment.closest('label');
   extra.append(contact,timing,comment);form.querySelector('#checkout-summary').before(extra);
   host.querySelector('#clear-cart').textContent='Сбросить';host.querySelector('#clear-cart').setAttribute('aria-label','Сбросить заказ');
-  const script=document.createElement('script');script.src='/cafe.js?v=cash-desk-1';
+  const script=document.createElement('script');script.src='/cafe.js?v=comments-20261004';
   await new Promise((resolve,reject)=>{script.onload=resolve;script.onerror=()=>reject(Error('Не удалось загрузить оформление заказа.'));document.head.append(script);});
   if(await window.cafeComposerReady===false)throw Error('Не удалось загрузить меню. Нажмите «Новый заказ», чтобы повторить.');
 
   // Reuse the existing controls and their handlers in one compact workspace row.
   const tabs=document.querySelector('#cabinet>.tabs'),search=host.querySelector('.cafe-search');
-  if(tabs&&search){const toolbar=document.createElement('div');toolbar.className='cafe-pos-toolbar';tabs.before(toolbar);toolbar.append(tabs,search);for(const control of [...tabs.querySelectorAll('button'),...search.querySelectorAll('button')])control.textContent=control.textContent.replace(/^\+\s*/, '');}
+  if(tabs&&search){const toolbar=document.createElement('div');toolbar.className='cafe-pos-toolbar';tabs.before(toolbar);toolbar.append(tabs,search);for(const control of [...tabs.querySelectorAll('button'),...search.querySelectorAll('button')])for(const node of control.childNodes)if(node.nodeType===3)node.textContent=node.textContent.replace(/^\+\s*/, '');}
   const heading=document.createElement('div');heading.className='cart-heading';
   cart.querySelector('h2').remove();cart.setAttribute('aria-label','Заказ кафе');
   heading.append(cart.querySelector('.cart-reset-actions'));cart.querySelector('.cafe-close').after(heading);
@@ -125,6 +125,7 @@ window.openCafeComposer=()=>loading||(loading=(async()=>{
    new MutationObserver(updateEmployee).observe(reason,{attributes:true});updateEmployee();
   }
 
+  if(newOrder){const manual=document.createElement('button');manual.type='submit';manual.id='manual-register-order';manual.setAttribute('form','checkout');manual.textContent='Пробито на эквайринге вручную';footer.append(manual);const syncManual=()=>{manual.disabled=host.querySelector('#checkout-button').disabled;manual.hidden=!!form.elements.freeReason?.value||!!form.dataset.guestBill;};new MutationObserver(syncManual).observe(host.querySelector('#checkout-button'),{attributes:true});form.addEventListener('change',syncManual);syncManual();}
   // Guest account actions can arrive after the composer loads. Move those same
   // nodes into the footer and retain their association with the checkout form.
   function placeGuestActions(){
@@ -142,6 +143,7 @@ window.openCafeComposer=()=>loading||(loading=(async()=>{
   let fitFrame=0,menuLayoutDirty=true,categoryEntries=[];
   const fitCart=()=>{cancelAnimationFrame(fitFrame);fitFrame=requestAnimationFrame(()=>{
    if(host.hidden)return;
+   const banner=host.querySelector('#guest-bill-banner'),bannerHeight=banner&&!banner.hidden?Math.ceil(banner.getBoundingClientRect().height)+'px':'0px';if(host.style.getPropertyValue('--guest-banner-height')!==bannerHeight)host.style.setProperty('--guest-banner-height',bannerHeight);
    const toolbar=document.querySelector('.cafe-pos-toolbar');
    if(toolbar){const height=Math.ceil(toolbar.getBoundingClientRect().height)+'px',offset=Math.ceil(toolbar.getBoundingClientRect().height+(parseFloat(getComputedStyle(toolbar).marginBottom)||0))+'px';if(layout.style.getPropertyValue('--cafe-toolbar-offset')!==offset)layout.style.setProperty('--cafe-toolbar-offset',offset);const cabinet=toolbar.parentElement;if(cabinet.style.getPropertyValue('--cafe-toolbar-height')!==height)cabinet.style.setProperty('--cafe-toolbar-height',height);const categoryHeight=matchMedia('(max-width:759px)').matches?Math.ceil(categories.getBoundingClientRect().height)+'px':'0px';if(cabinet.style.getPropertyValue('--cafe-category-height')!==categoryHeight)cabinet.style.setProperty('--cafe-category-height',categoryHeight);}
    const viewport=window.visualViewport,footerHeight=parseFloat(getComputedStyle(document.body).getPropertyValue('--pos-footer-height'))||0,bottom=(viewport?viewport.height+viewport.offsetTop:innerHeight)-footerHeight;
@@ -200,7 +202,7 @@ window.openCafeComposer=()=>loading||(loading=(async()=>{
    e.preventDefault();activeCategory=section.id;section.scrollIntoView({block:'start',behavior:'instant'});fitCart();
   });
   new MutationObserver(()=>{menuLayoutDirty=true;fitCart();}).observe(categories,{childList:true});
-  fitCart();
+  window.STARTGuests?.updateCafeContext();fitCart();
 
  }catch(e){loading=null;const message=e instanceof TypeError?'Нет связи. Не удалось загрузить меню. Нажмите «Новый заказ» для повторной загрузки.':e.message;host.textContent=message;throw Error(message);}
 })());

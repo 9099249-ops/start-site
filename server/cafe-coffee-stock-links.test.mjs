@@ -129,8 +129,8 @@ check('Coffee plan: all five exact supported names link only supplied doses', f 
 check('Coffee plan: preserves existing base and option recipes, menu flags, inventory, and audit on repeated use', f => {
   const itemId = f.dish('Капучино').id;
   f.cafe.stock.save({itemId, component: 'base', revision: -1, ingredients: [{id: f.coffee.id, amount: '0.02'}, {id: f.milk.id, amount: '0.3'}]}, owner);
-  f.cafe.stock.save({itemId, component: 'option:' + f.option('Без сахара').id, revision: -1, ingredients: [{id: f.coffee.id, amount: '0.001'}]}, owner);
-  f.cafe.stock.save({itemId, component: 'option:' + f.option('Обычное').id, revision: -1, ingredients: [{id: f.milk.id, amount: '0.01'}]}, owner);
+  f.cafe.db.prepare('INSERT INTO cafe_recipes(item_id,component,body,revision) VALUES(?,?,?,0)').run(itemId, 'option:' + f.option('Без сахара').id, JSON.stringify([{id: f.coffee.id, unitId: f.inventory.row(f.coffee.id).unit_id, amount: '0.001'}]));
+  f.cafe.db.prepare('INSERT INTO cafe_recipes(item_id,component,body,revision) VALUES(?,?,?,0)').run(itemId, 'option:' + f.option('Обычное').id, JSON.stringify([{id: f.milk.id, unitId: f.inventory.row(f.milk.id).unit_id, amount: '0.01'}]));
   f.editMenu(menu => { menu.items.find(i => i.id === itemId).soldOut = true; menu.groups.find(g => g.id === 'coffee_milk').options[0].soldOut = true; });
   const before = {recipes: f.rows('cafe_recipes'), menu: f.cafe.catalog(), inventory: f.rows('inventory_items'), audit: f.rows('cafe_audit'), changes: f.changes()};
   for (let i = 0; i < 2; i++) assert.equal(linkCoffeeStock(f.cafe, owner, cappuccinoPlan())[0].status, 'kept_existing');

@@ -15,7 +15,7 @@ function fixture(){
   const admin=new AdminStore(':memory:');
   admin.db.exec("INSERT INTO admin_users VALUES(1,'admin','admin','unused')");
   const calls=[],answers=[];
-  const connection={read:()=>({apiKey:'never-expose-api-key',deviceId}),request:async(url,options)=>{
+  const connection={read:()=>({apiKey:'never-expose-api-key',deviceId}),request:async(url,options)=>{if(url.includes('/v4/Shifts'))return {ok:true,json:async()=>url.includes('/v4/Shifts?')?{rows:[{id:'test-shift',device:{id:709740}}]}:{id:'test-shift',device:{id:709740},shiftOpenedReport:{dateTime:new Date().toISOString()},shiftClosedReport:null}};
     calls.push({url,options});
     assert.ok(answers.length,'Unexpected aQsi request; no fallback network access is allowed');
     const next=answers.shift();if(next instanceof Error)throw next;return next;

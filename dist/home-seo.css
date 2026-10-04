@@ -1,0 +1,35 @@
+.hero .hero-copy #hero-title.rental-title{font-size:clamp(30px,3.4vw,51px);line-height:1.12;letter-spacing:-.04em;max-width:650px;text-transform:none;margin:20px 0}
+.hero .hero-description{margin-top:16px}
+.fleet-content{display:flex;flex-direction:column;height:100%}
+.fleet-card{display:flex;flex-direction:column}
+.fleet-photo{flex:none}
+.fleet-content>p{font-size:13px;line-height:1.55;min-height:0;margin:12px 0}
+.fleet-content h3 a,.extra-item h3 a{color:inherit;text-decoration:none}
+.fleet-content h3 a:hover,.extra-item h3 a:hover{text-decoration:underline;text-underline-offset:4px}
+.fleet-content>.fleet-count{font-size:12px;color:var(--muted);margin-top:auto;padding-top:6px}
+.fleet-bottom{margin-top:6px}
+.extra-item{align-items:flex-start}
+.extra-item>div{min-width:0;flex:1}
+.extra-item .fleet-description{font-size:13px;line-height:1.55}
+.extra-item .fleet-count{font-size:11px;color:var(--muted)}
+.extra-item .round-button{margin-top:8px}
+.reviews-section{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,560px);gap:64px;align-items:start}
+.reviews-copy{padding-top:30px}
+.reviews-copy h2{max-width:440px}
+.reviews-copy>p{font-size:17px;line-height:1.7;margin:22px 0;max-width:460px}
+.reviews-actions{display:flex;flex-wrap:wrap;gap:18px 24px;align-items:center;margin-top:30px}
+.reviews-widget{width:100%;height:640px;min-width:0;overflow:hidden;position:relative;border:1px solid #e6e6e6;border-radius:16px;background:#f4f7f8}
+.reviews-widget iframe{width:100%;height:100%;border:0;box-sizing:border-box;display:block}
+.reviews-widget noscript iframe{position:absolute;inset:0}
+.reviews-credit{position:absolute;bottom:8px;left:0;width:100%;padding:0 16px;box-sizing:border-box;text-align:center;text-decoration:none;color:#777;font-size:10px;line-height:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:850px){.reviews-section{gap:28px;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.reviews-copy{padding-top:12px}.reviews-copy>p{font-size:15px}.reviews-widget{height:620px}}
+@media(max-width:580px){.hero .hero-copy #hero-title.rental-title{font-size:32px;max-width:100%;line-height:1.12}.reviews-section{grid-template-columns:1fr;gap:24px}.reviews-copy{padding-top:0}.reviews-copy>p{margin:16px 0}.reviews-actions{margin-top:20px}.reviews-widget{height:560px;border-radius:12px}.fleet-content>p{font-size:12px}.fleet-content>.fleet-count{font-size:10px}}
+
+.status-card .water-issue-status{font-size:15px;line-height:1.6;margin:18px 0 0;color:#235e47}.water-issue-status strong{display:inline-block;font-weight:800}
+.gift-section{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:56px;align-items:center}.gift-art{min-width:0}.gift-art img{width:100%;height:auto;display:block;border-radius:20px}.gift-copy{min-width:0}.gift-copy h2{margin-top:16px}.gift-copy>p{font-size:17px;line-height:1.7;margin:20px 0}.gift-copy .gift-how{font-size:14px;color:var(--muted)}.gift-actions{display:flex;flex-wrap:wrap;gap:18px 24px;align-items:center;margin-top:28px}
+@media(max-width:850px){.gift-section{gap:28px}.gift-copy>p{font-size:15px}}
+@media(max-width:580px){.gift-section{grid-template-columns:1fr;gap:24px}.gift-art img{border-radius:12px}.gift-copy>p{margin:16px 0}.gift-actions{margin-top:20px}.gift-actions .button{width:100%}}
+
+.weather-widget-card{min-width:0;align-self:start;padding:24px;border:1px solid var(--line);border-radius:20px;background:#f4f8fa;overflow:hidden}.weather-widget-card h3{font-size:20px;margin-bottom:18px}.weather-widget-card [data-elfsight-app-lazy]{width:100%;min-width:0;min-height:160px}.weather-source-link{display:inline-block;margin-top:14px;font-size:12px;text-decoration:underline;text-underline-offset:3px}@media(max-width:580px){.weather-widget-card{padding:20px;border-radius:14px}}
+
+@media(max-width:580px){#now .now-grid{grid-template-columns:minmax(0,1fr)}#now .now-grid>.camera{grid-column:auto}}

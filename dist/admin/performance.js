@@ -4,7 +4,7 @@
  const show=(text,state)=>{const dialogs=document.querySelectorAll('dialog[open]'),host=dialogs[dialogs.length-1]||document.body;if(banner.parentNode!==host)host.append(banner);clearTimeout(timer);banner.textContent=text;banner.dataset.state=state;banner.hidden=false;if(state!=='busy')timer=setTimeout(()=>{banner.hidden=true;},state==='error'?12000:2400);};
  window.fetch=async(input,options={})=>{
   const url=typeof input==='string'?input:null,method=(options.method||'GET').toUpperCase();
-  const api=url?.startsWith('/api/admin/'),write=api&&method!=='GET'&&method!=='HEAD';
+  const api=url?.startsWith('/api/admin/'),readOnlyPost=api&&method==='POST'&&/\/(?:quote|stock-check|preview)(?:\?|$)/.test(url),write=api&&method!=='GET'&&method!=='HEAD'&&!readOnlyPost;
   const feedback=write&&!/\/(quote|login|logout)(?:\?|$)/.test(url);
   if(write){epoch++;pending.clear();}if(feedback){writes++;show(/\/(pay|rental-pay)/.test(url)?'Отправляем запрос на кассу…':'Сохраняем…','busy');}
   const key=api&&method==='GET'&&!options.signal?epoch+':'+url:null;

@@ -17,6 +17,29 @@ function fixture(file=':memory:'){
  const p=new PrintStore(a,{env:{...env}});a.printStore=p;return {a,p,close:()=>a.close()};
 }
 const check=(name,fn)=>test('Print: '+name,async()=>{const f=fixture();try{await fn(f);}finally{f.close();}});
+check('cyclic display numbers leave creation, ID search and print deduplication unique',f=>{
+ const {c,body}=cafe(f),first=c.create(body,u,'test',at('12:00'));
+ f.a.db.prepare("INSERT INTO cafe_orders(id,request_id,fingerprint,public_token,source,details,total_cents,status,created,updated) VALUES(999,'boundary','boundary','boundary','admin',?,0,'DELIVERED',?,?)").run(JSON.stringify({items:[],name:'',phone:''}),at('12:00'),at('12:00'));
+ const nextBody={...body,requestId:randomUUID()},second=c.create(nextBody,u,'test',at('12:01'));
+ const third=c.create({...body,requestId:randomUUID()},u,'test',at('12:02'));
+ assert.deepEqual([first.id,second.id,third.id],[1,1000,1001]);
+ assert.deepEqual([first.displayNumber,second.displayNumber,third.displayNumber],['001','001','002']);
+ const a=f.p.cafeJobs(first.id,u).jobs[0],b=f.p.cafeJobs(second.id,u).jobs[0];
+ assert.equal(a.payload.order_number,'001');assert.equal(b.payload.order_number,'001');assert.notEqual(a.payload.order_id,b.payload.order_id);assert.notEqual(a.id,b.id);
+ c.create(nextBody,u,'test',at('12:03'));assert.equal(f.p.cafeJobs(second.id,u).jobs.length,1);
+ assert.deepEqual(c.orders(new URLSearchParams({date,q:'1000',compact:'1'}),u).rows.map(r=>r.id),[1000]);
+ assert.deepEqual(c.orders(new URLSearchParams({date,q:'1',compact:'1'}),u).rows.map(r=>r.id),[1]);
+});
+check('heartbeat exposes only valid LAN addresses and marks old data offline',f=>{
+ f.p.heartbeat({protocol_version:1,local_ip:'192.168.1.150',local_ips:['10.1.2.3','<script>','8.8.8.8','127.0.0.1','192.168.1.150']},1000);
+ assert.deepEqual(f.p.device(2000).health.local_ips,['192.168.1.150','10.1.2.3']);
+ assert.equal(f.p.device(100000).online,false);
+ assert.equal(f.p.device(100000).health.local_ip,'192.168.1.150');
+ f.p.heartbeat({protocol_version:1,local_ip:'192.168.1.151'},100001);
+ assert.equal(f.p.device(100002).health.local_ip,'192.168.1.151');
+ f.p.heartbeat({protocol_version:1},100003);
+ assert.equal(f.p.device(100004).health.local_ip,null);
+});
 function shift(f,{closed=true,day=date}={}){const start=f.a.workforce.action({requestId:randomUUID()},employee,'start',at('10:00')),id=f.a.openShift({day,cashStartCents:1000000,employeeIds:[2]},u,at('10:01'));if(closed){f.a.addWithdrawal({shiftId:id,amountCents:2000000,comment:'Директор'},u,at('12:00'));f.a.workforce.action({requestId:randomUUID(),sessionId:start.id},employee,'end',at('20:00'));f.a.closeShift({shiftId:id,cashEndCents:2000000,cashlessCents:5000000},u,at('21:00'));}return id;}
 function receipt(f){shift(f);return f.p.report({},u,at('21:10')).job;}
 function event(job,status='received',sequence=1){return {event_id:randomUUID(),job_id:job.id,attempt_id:'attempt-'+job.id,sequence,status,payload_hash:job.payload_hash,occurred_at:new Date().toISOString(),cups_id:null};}

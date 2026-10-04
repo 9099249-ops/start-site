@@ -9,6 +9,7 @@ except ImportError:  # Queue/protocol tests also run on Windows; serving remains
 import hashlib
 import hmac
 import json
+import ipaddress
 import logging
 from logging.handlers import RotatingFileHandler
 import os
@@ -17,6 +18,7 @@ import secrets
 import signal
 import sqlite3
 import sys
+import subprocess
 import threading
 import time
 import uuid
@@ -120,6 +122,48 @@ def validate(data):
     data['total'] = money(data['total'])
     return kind, ident, data
 
+def receipt_time(value):
+    stamp = datetime.fromisoformat(value.replace('Z', '+00:00'))
+    moscow = ZoneInfo('Europe/Moscow')
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=moscow)
+    return stamp.astimezone(moscow).strftime('%d.%m.%Y %H:%M')
+
+
+def local_network():
+    """Read local interfaces without sending traffic or depending on public DNS."""
+    try:
+        result = subprocess.run(['ip', '-j', '-4', 'addr', 'show', 'up'],
+                                capture_output=True, text=True, timeout=2, check=True)
+        addresses = []
+        for interface in json.loads(result.stdout):
+            name = interface.get('ifname', '')
+            if name == 'lo' or name.startswith(('docker', 'veth', 'br-', 'tun', 'tailscale')):
+                continue
+            for entry in interface.get('addr_info', []):
+                address = ipaddress.ip_address(entry.get('local', ''))
+                if entry.get('scope') == 'global' and address.version == 4 and any(
+                    address in ipaddress.ip_network(network)
+                    for network in ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16')
+                ):
+                    addresses.append((0 if name.startswith(('eth', 'en')) else 1, name, str(address)))
+        ips = list(dict.fromkeys(row[2] for row in sorted(addresses)))[:8]
+        return {'local_ip': ips[0] if ips else None, 'local_ips': ips}
+    except (OSError, subprocess.SubprocessError, ValueError, TypeError):
+        return {'local_ip': None, 'local_ips': []}
+
+
+def ticket_caption(data):
+    return {'ADD': 'ДОЗАКАЗ', 'CANCELLED': 'ОТМЕНА ЗАКАЗА', 'LOCATION': 'УТОЧНЕНИЕ МЕСТА'}.get(data.get('ticket_kind'), '')
+
+
+def customer_number(data):
+    value = data.get('order_number') or data['order_id']
+    if isinstance(value, str) and value.isascii() and value.isdigit() and int(value) > 0:
+        return f'{(int(value) - 1) % 999 + 1:03d}'
+    return value  # Keep explicitly labelled technical test IDs readable.
+
+
 def receipt_lines(data, received, reprint=False):
     lines = ['КАФЕ СТАРТ', '']
     if reprint:
@@ -127,7 +171,7 @@ def receipt_lines(data, received, reprint=False):
     if data['type'] == 'shift_report':
         if data.get('revision', 1) > 1:
             lines += ['НОВАЯ РЕДАКЦИЯ ' + str(data['revision'])]
-        lines += ['ПРЕДВАРИТЕЛЬНЫЙ ОТЧЁТ' if data.get('preliminary') else 'ИТОГОВЫЙ ОТЧЁТ', 'Дата: ' + data['date'], 'Смена: ' + data['shift_id'], '',
+        lines += ['ПРЕДВАРИТЕЛЬНЫЙ ОТЧЁТ' if data.get('preliminary') else 'ИТОГОВЫЙ ОТЧЁТ', 'Дата: ' + datetime.strptime(data['date'], '%Y-%m-%d').strftime('%d.%m.%Y'), 'Смена: ' + data['shift_id'], '',
                   'КАФЕ + ПРОКАТ', 'СУММА ЗА СМЕНУ: ' + data['total'] + ' ₽', '',
                   'КОМУ СКОЛЬКО ПЕРЕВЕСТИ:']
         for row in data['transfers']:
@@ -143,8 +187,10 @@ def receipt_lines(data, received, reprint=False):
             lines += ['Снимок: ' + stamp.strftime('%d.%m.%Y %H:%M') + ' МСК']
         lines += ['', 'Отчёт: ' + data['report_id']]
     else:
-        caption = {'ADD': 'ДОЗАКАЗ', 'CANCELLED': 'ОТМЕНА ЗАКАЗА', 'LOCATION': 'УТОЧНЕНИЕ МЕСТА'}.get(data.get('ticket_kind'), 'ЗАКАЗ')
-        lines += [caption + ' № ' + data.get('order_number', data['order_id']), '']
+        caption = ticket_caption(data)
+        if caption:
+            lines += [caption]
+        lines += [customer_number(data), '']
         if data.get('table'):
             lines += ['Стол: ' + data['table']]
         fulfillment = {'lounge': 'Лаунж-зона', 'takeaway': 'С собой', 'delivery': 'Доставка'}.get(data.get('fulfillment'), data.get('fulfillment', ''))
@@ -164,35 +210,59 @@ def receipt_lines(data, received, reprint=False):
             lines += ['ИТОГО: ' + data['total'] + ' ₽']
         if data.get('comment'):
             lines += ['', 'Комментарий:', data['comment']]
-    lines += ['', 'Получено: ' + received, 'Печать: ' + now()]
+    lines += ['', 'Получено: ' + receipt_time(received)]
     return lines
 
-def render(data, received, cfg, reprint=False):
+def receipt_bands(data, received, cfg, reprint=False):
     from PIL import Image, ImageDraw, ImageFont
     width = int(cfg.get('width_dots', 576))
     if width < 384 or width > 640 or width % 8:
         raise ValueError('invalid width_dots')
     font = ImageFont.truetype(cfg.get('font_path', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'), 24)
     probe = ImageDraw.Draw(Image.new('L', (width, 1), 255))
-    wrapped = []
-    for line in receipt_lines(data, received, reprint):
+    number_index = (2 + 2 * bool(reprint) + bool(ticket_caption(data))) if data['type'] == 'cafe_order' else None
+    for index, line in enumerate(receipt_lines(data, received, reprint)):
+        large = index == number_index
+        row_font = font
+        if large:
+            bold_path = cfg.get('bold_font_path', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')
+            if not Path(bold_path).exists():
+                bold_path = cfg.get('font_path', bold_path)
+            size = 112
+            row_font = ImageFont.truetype(bold_path, size)
+            while size > 48 and probe.textlength(line, font=row_font) > width - 16:
+                size -= 2
+                row_font = ImageFont.truetype(bold_path, size)
+        wrapped = []
         for paragraph in line.split('\n'):
             buf = ''
             for char in paragraph:
-                if buf and probe.textlength(buf + char, font=font) > width - 16:
+                if buf and probe.textlength(buf + char, font=row_font) > width - 16:
                     wrapped.append(buf)
                     buf = ''
                 buf += char
             wrapped.append(buf)
+        for text in wrapped:
+            if large:
+                left, top, right, bottom = row_font.getbbox(text or '0')
+                im = Image.new('L', (width, bottom - top + 24), 255)
+                ImageDraw.Draw(im).text((8-left, 12-top), text, font=row_font, fill=0)
+            else:
+                im = Image.new('L', (width, 34), 255)
+                ImageDraw.Draw(im).text((8, 0), text, font=font, fill=0)
+            yield im
+    # Five empty text-height rows after the final printed line, before cutting.
+    for _ in range(5):
+        yield Image.new('L', (width, 34), 255)
+
+
+def render(data, received, cfg, reprint=False):
     out = bytearray(b'\x1b@\x1ba\x00')
     # Small raster bands avoid excessive printer buffer/memory use.
-    for line in wrapped:
-        im = Image.new('L', (width, 34), 255)
-        ImageDraw.Draw(im).text((8, 0), line, font=font, fill=0)
+    for im in receipt_bands(data, received, cfg, reprint):
         bits = im.point(lambda p: 255 if p >= 160 else 0).convert('1').tobytes()
-        out += b'\x1dv0\x00' + (width // 8).to_bytes(2, 'little') + (34).to_bytes(2, 'little')
+        out += b'\x1dv0\x00' + (im.width // 8).to_bytes(2, 'little') + im.height.to_bytes(2, 'little')
         out += bytes(b ^ 255 for b in bits)
-    out += b'\n\n\n'
     # Confirmed on the station printer. Keep sound in the same durable print job.
     audible = data['type'] == 'cafe_order' and data.get('ticket_kind') not in ('CANCELLED', 'LOCATION')
     if cfg.get('beep_hex') and (not cfg.get('beep_cafe_only', False) or audible):
@@ -392,6 +462,7 @@ class Agent:
                   'printing_enabled': bool(self.cfg.get('printing_enabled')),
                   'printer_available': False, 'physical_print_confirmed': False,
                   'completion_semantics': 'CUPS completed; paper output requires device/operator confirmation'}
+        result.update(local_network())
         with self.store.db() as db:
             result['counts'] = {r[0]: r[1] for r in db.execute('SELECT status,count(*) FROM jobs GROUP BY status')}
             result['queue_length'] = sum(result['counts'].get(s, 0) for s in ('received', 'printing'))

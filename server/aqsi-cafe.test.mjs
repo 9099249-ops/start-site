@@ -11,7 +11,7 @@ const u={id:1,role:'admin'},staff={id:2,role:'staff'},waiter={id:3,role:'waiter'
 function fixture(){
  const a=new AdminStore(':memory:');a.db.exec("INSERT INTO admin_users VALUES(1,'admin','admin','unused'),(2,'station','staff','unused'),(3,'waiter','waiter','unused')");
  const c=new CafeStore(a,new SmsStore(a,null,{}));fillTestCafeStock(c);
- const calls=[],answers=[],connection={read:()=>({apiKey:'test-key',deviceId:709740}),request:async(url,options)=>{calls.push({url,...options});const answer=answers.shift();if(answer instanceof Error)throw answer;return {ok:true,json:async()=>answer};}};
+ const calls=[],answers=[],connection={read:()=>({apiKey:'test-key',deviceId:709740}),request:async(url,options)=>{if(url.includes('/v4/Shifts'))return {ok:true,json:async()=>url.includes('/v4/Shifts?')?{rows:[{id:'test-shift',device:{id:709740}}]}:{id:'test-shift',device:{id:709740},shiftOpenedReport:{dateTime:new Date().toISOString()},shiftClosedReport:null}};calls.push({url,...options});const answer=answers.shift();if(answer instanceof Error)throw answer;return {ok:true,json:async()=>answer};}};
  new AqsiPilot(a,connection);const p=new AqsiCafe(a,connection,c,{enabled:true});c.terminal=p;
  a.workforce.requireOnDuty=()=>{};
  const item=c.catalog().items.find(i=>i.name==='Сырники');
@@ -41,7 +41,7 @@ test('Cafe terminal: one debit for concurrent staff and browser retries, no reve
   assert.equal(f.calls.length,1);assert.equal(JSON.parse(f.calls[0].body).amount,r.totalCents);assert.equal(JSON.parse(f.calls[0].body).mode,'sbp_with_card');
   assert.throws(()=>f.c.status({id:r.id,revision:0,status:'CANCELLED'},u),/Оплата/);
   assert.throws(()=>f.c.append({id:r.id,revision:0,requestId:randomUUID(),items:b.items,expectedTotalCents:b.expectedTotalCents},staff),/Оплата/);
-  const next=f.order();await assert.rejects(f.p.begin({id:next.id,revision:0},waiter),/занята/);assert.equal(f.calls.length,1);
+  const next=f.order();await assert.rejects(f.p.begin({id:next.id,revision:0},waiter),/Касса заблокирована: заказ №/);assert.equal(f.calls.length,1);
  }finally{f.a.close();}
 });
 test('Cafe terminal: confirmed payment accounts once even if fiscal receipt fails, protects paid order after restart',async()=>{
@@ -113,5 +113,51 @@ test('Unknown result cannot be replaced by cash or cancelled and stays globally 
 
 test('Earlier review-only canceled operation is reconciled by read-only polling, without retrying a payment',async()=>{
  const f=fixture();try{const r=f.order(),op=randomUUID();f.answers.push({operationId:op});await f.p.begin({id:r.id,revision:r.revision},staff);f.p.set(f.p.forOrder(r.id).id,'review');f.answers.push({operationId:op,deviceId:709740,type:'acquiring.purchase',status:'Canceled',result:null});await f.p.tick();assert.equal(f.p.forOrder(r.id).state,'cancelled');assert.equal(f.calls.filter(x=>x.method==='POST').length,1);assert.equal(f.p.terminalBusy(),false);
+ }finally{f.a.close();}
+});
+
+test('Bulk cafe payment views match individual lookups including pending diagnostics',async()=>{const f=fixture();try{const orders=[f.order(),f.order()];f.answers.push({operationId:randomUUID()});await f.p.begin({id:orders[0].id,revision:orders[0].revision},staff);const rows=orders.map(r=>f.c.order(r.id,u)),bulk=f.p.payments(rows);for(const r of rows)assert.deepEqual(bulk.get(r.id)||null,f.p.payment(r.id));}finally{f.a.close();}});
+test('Paid receipt timeout: staff releases terminal without resolving receipt or repeating payment; every role can confirm existing receipt once',async()=>{
+ const f=fixture();try{
+  const r=f.order(),op=await paid(f,r);f.answers.push({operationId:op,deviceId:709740,type:'receipt.process',status:'Timeout',result:null});await f.p.tick();
+  const payment=f.p.forOrder(r.id),postCount=f.calls.filter(x=>x.method==='POST').length;
+  assert.equal(payment.state,'review');assert.equal(f.p.terminalBusy(),true);assert.equal(f.p.terminalIssues()[0].orderId,r.id);
+  assert.match(f.p.terminalBusyMessage(),new RegExp('№'+r.id));
+  const b={id:r.id,paymentId:payment.id,result:'terminal_free',confirmed:true,terminalIdle:true};
+  assert.throws(()=>f.p.confirmReceipt({...b,terminalIdle:false},staff));assert.throws(()=>f.p.confirmReceipt(b,{role:'visitor'}));
+  f.p.confirmReceipt(b,staff);assert.equal(f.p.terminalBusy(),false);assert.equal(f.p.forOrder(r.id).state,'review');assert.equal(f.p.view(f.p.forOrder(r.id)).terminalReleased,true);
+  assert.equal(f.p.terminalIssues()[0].blocking,false);
+  await f.p.begin({id:r.id,revision:r.revision,cash:true},staff);assert.equal(f.calls.filter(x=>x.method==='POST').length,postCount);
+  const before=f.a.db.prepare('SELECT current_milli FROM inventory_items ORDER BY id').all();
+  const done=f.p.confirmReceipt({...b,result:'receipt_exists'},waiter);assert.equal(done.state,'done');assert.equal(done.receiptId,null);
+  assert.equal(f.c.order(r.id,u).details.manualFiscalConfirmation.confirmedBy,waiter.id);
+  const audit=f.a.db.prepare("SELECT count(*) n FROM financial_audit_log WHERE action='fiscal_receipt_manual_confirmation'").get().n;
+  f.p.confirmReceipt({...b,result:'receipt_exists'},staff);assert.equal(f.a.db.prepare("SELECT count(*) n FROM financial_audit_log WHERE action='fiscal_receipt_manual_confirmation'").get().n,audit);
+  assert.deepEqual(f.a.db.prepare('SELECT current_milli FROM inventory_items ORDER BY id').all(),before);assert.equal(f.calls.filter(x=>x.method==='POST').length,postCount);
+ }finally{f.a.close();}
+});
+test('Final matching receipt rejection releases terminal, whereas unknown payment and mismatched receipt keep the lock',async()=>{
+ const f=fixture();try{const r=f.order(),op=await paid(f,r);f.answers.push({operationId:op,deviceId:709740,type:'receipt.process',status:'Error',result:null});await f.p.tick();assert.equal(f.p.forOrder(r.id).state,'review');assert.equal(f.p.terminalBusy(),false);
+  const second=f.order();f.answers.push(Error('lost'));await f.p.begin({id:second.id,revision:second.revision},staff);const unknown=f.p.forOrder(second.id);assert.equal(unknown.state,'payment_unknown');assert.equal(f.p.terminalBusy(),true);assert.throws(()=>f.p.confirmReceipt({id:second.id,paymentId:unknown.id,result:'terminal_free',confirmed:true,terminalIdle:true},staff));
+ }finally{f.a.close();}
+ const g=fixture();try{const r=g.order(),op=await paid(g,r);g.answers.push({operationId:randomUUID(),deviceId:709740,type:'receipt.process',status:'Error',result:null});await g.p.tick();assert.equal(g.p.terminalBusy(),true);}finally{g.a.close();}
+});
+
+const manualBody=(f,r,method='card')=>({id:r.id,revision:f.c.order(r.id,staff).revision,paymentId:f.p.forOrder(r.id)?.id||null,method,note:'Касса 2, чек проверен',confirmed:true,terminalIdle:true,receiptExists:true});
+test('Manual external register payment accounts once, never calls aQsi or consumes stock twice',()=>{
+ const f=fixture();try{const r=f.order(),before=f.a.db.prepare('SELECT * FROM inventory_transactions').all(),b=manualBody(f,r);f.p.manualPaid(b,waiter);f.p.manualPaid(b,staff);
+ const o=f.c.order(r.id,staff);assert.equal(o.status,'DELIVERED');assert.equal(o.details.paymentMethod,'card');assert.equal(o.details.cashPaidAt,undefined);assert.equal(o.terminalPayment.paid,true);assert.equal(f.calls.length,0);assert.deepEqual(f.a.db.prepare('SELECT * FROM inventory_transactions').all(),before);assert.equal(f.a.db.prepare("SELECT count(*) n FROM cafe_order_events WHERE order_id=? AND kind='PAID'").get(r.id).n,1);assert.equal(f.p.terminalBusy(),false);
+ }finally{f.a.close();}
+});
+test('Manual cash payment and unknown cancelled attempts can be recorded without acquiring',async()=>{
+ const f=fixture();try{const r=f.order();f.answers.push(new Error('timeout'));await f.p.begin({id:r.id,revision:r.revision},staff);assert.throws(()=>f.p.manualPaid(manualBody(f,r),staff),/двух минут/);const p=f.p.forOrder(r.id);f.a.db.prepare('UPDATE aqsi_cafe SET created=? WHERE id=?').run(Date.now()-180000,p.id);const calls=f.calls.length;f.p.manualPaid(manualBody(f,r,'cash'),staff);assert.equal(f.calls.length,calls);assert.equal(f.c.order(r.id,staff).details.paymentMethod,'cash');assert.ok(f.c.order(r.id,staff).details.cashPaidAt);assert.equal(f.p.terminalBusy(),false);
+ }finally{f.a.close();}
+});
+test('Manual payment requires receipt, current revision and current operation',()=>{
+ const f=fixture();try{const r=f.order(),b=manualBody(f,r);for(const delta of [{receiptExists:false},{terminalIdle:false},{revision:99},{paymentId:'other'}])assert.throws(()=>f.p.manualPaid({...b,...delta},staff));assert.equal(f.p.forOrder(r.id),null);assert.equal(f.c.order(r.id,staff).details.terminalPaidAt,undefined);assert.equal(f.calls.length,0);
+ }finally{f.a.close();}
+});
+test('Manual receipt confirmation keeps already received revenue and does not resend pending receipt',async()=>{
+ const f=fixture();try{const r=f.order();await paid(f,r);const p=f.p.forOrder(r.id);f.a.db.prepare('UPDATE aqsi_cafe SET created=? WHERE id=?').run(Date.now()-180000,p.id);const calls=f.calls.length,at=f.c.order(r.id,staff).details.terminalPaidAt;f.p.manualPaid(manualBody(f,r),staff);assert.equal(f.p.forOrder(r.id).state,'done');assert.equal(f.calls.length,calls);assert.equal(f.c.order(r.id,staff).details.terminalPaidAt,at);assert.equal(f.a.db.prepare("SELECT count(*) n FROM cafe_order_events WHERE order_id=? AND kind='PAID'").get(r.id).n,1);
  }finally{f.a.close();}
 });

@@ -1,4 +1,8 @@
+import cafeNumber from '../dist/cafe-number.js';
+import {isIP} from 'node:net';
 import {createHash, randomUUID, timingSafeEqual} from 'node:crypto';
+
+const localIPv4=v=>typeof v==='string'&&isIP(v)===4&&(v.startsWith('10.')||v.startsWith('192.168.')||(v.startsWith('172.')&&Number(v.split('.')[1])>=16&&Number(v.split('.')[1])<=31));
 
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 const owner=u=>{if(!u)fail('Войдите в админку.',401);if(u.role!=='admin')fail('Повторная печать этого документа доступна администратору.',403);};
@@ -76,7 +80,7 @@ export class PrintStore {
    if(!delivered)return;
   }
   const items=e.kind==='CANCELLED'?d.items:batch.items;
-  const payload={type:'cafe_order',order_id:`start-cafe-${r.id}-event-${e.id}`,order_number:String(r.id),ticket_kind:e.kind,order_source:['admin','waiter'].includes(r.source)?'admin':'site',customer_name:label(d.name),fulfillment:label((d.guestDeferred&&!d.terminalPaidAt?'НЕ ОПЛАЧЕНО · НА СЧЁТ №'+d.guestBillId+' · ':'')+(d.complimentary?'БЕСПЛАТНО · '+d.complimentary.recipientName+' · ':'')+(d.place?.name||{house:'Домик в яхт клубе: '+d.house,pickup:'Заберут в кафе',lounge:'Лаунж-зона',yacht:'На яхту / катер',place:'На месте'}[d.fulfillment])),comment:label([d.complimentary?'БЕСПЛАТНО. К оплате: 0 ₽. '+(d.complimentary.comment||''):'',d.yacht,d.location,d.deliveryCents!==undefined?'Доставка: '+rubles(d.deliveryCents)+' ₽':'',d.requestedAt?'К '+d.requestedAt:'',d.comment].filter(Boolean).join('\n'),1500),items:items.map(i=>({name:label(i.name,200),qty:i.quantity,price:rubles(d.complimentary?0:i.totalCents),modifiers:[i.variant?.name,...(i.modifiers||[]).map(m=>m.name),i.comment].filter(Boolean).map(x=>label(x,200))})),total:rubles(e.kind==='CANCELLED'?r.total_cents:batch.totalCents)};
+  const payload={type:'cafe_order',order_id:`start-cafe-${r.id}-event-${e.id}`,order_number:cafeNumber(r.id),ticket_kind:e.kind,order_source:['admin','waiter'].includes(r.source)?'admin':'site',customer_name:label(d.name),fulfillment:label((d.guestDeferred&&!d.terminalPaidAt?'НЕ ОПЛАЧЕНО · НА СЧЁТ №'+d.guestBillId+' · ':'')+(d.complimentary?'БЕСПЛАТНО · '+d.complimentary.recipientName+' · ':'')+(d.place?.name||{house:'Домик в яхт клубе: '+d.house,pickup:'Заберут в кафе',lounge:'Лаунж-зона',yacht:'На яхту / катер',place:'На месте'}[d.fulfillment])),comment:label([d.complimentary?'БЕСПЛАТНО. К оплате: 0 ₽. '+(d.complimentary.comment||''):'',d.yacht,d.location,d.deliveryCents!==undefined?'Доставка: '+rubles(d.deliveryCents)+' ₽':'',d.requestedAt?'К '+d.requestedAt:'',d.comment].filter(Boolean).join('\n'),1500),items:items.map(i=>({name:label(i.name,200),qty:i.quantity,price:rubles(d.complimentary?0:i.totalCents),modifiers:[i.variant?.name,...(i.modifiers||[]).map(m=>m.name),i.comment].filter(Boolean).map(x=>label(x,200))})),total:rubles(e.kind==='CANCELLED'?r.total_cents:batch.totalCents)};
   return this.enqueue(`cafe:event:${e.id}`,payload,{orderId:r.id,eventId:e.id,eventKind:e.kind},u,now);
  }
  cafeJobs(orderId,u){staff(u);if(!Number.isSafeInteger(orderId)||orderId<1)fail('Неверный заказ.');return {jobs:this.db.prepare("SELECT j.id FROM print_jobs j JOIN print_documents d ON d.id=j.document_id WHERE d.kind='cafe_order' AND json_extract(d.snapshot,'$.orderId')=? ORDER BY j.created_at,j.rowid").all(orderId).map(r=>this.job(r.id)),device:this.device()};}
@@ -101,7 +105,7 @@ export class PrintStore {
    this.db.prepare('INSERT INTO print_events VALUES(?,?,?,?,?)').run(e.event_id,e.job_id,e.sequence,body,now);accepted.push(e.event_id);
   }return {accepted_event_ids:accepted};});
  }
- heartbeat(b,now=Date.now()){if(b.protocol_version!==1)fail('Unsupported protocol');const health={printing_enabled:b.printing_enabled===true,printer_configured:b.printer_configured===true,cups:b.cups===true,queue_length:Number.isSafeInteger(b.queue_length)?b.queue_length:0,printer_state:b.printer_state??null,physical_print_confirmed:false};this.db.prepare('INSERT INTO print_device VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET database_id=excluded.database_id,heartbeat=excluded.heartbeat,last_seen=excluded.last_seen').run(this.env.PRINT_AGENT_ID||'station-printer-1',this.env.PRINT_AGENT_DATABASE_ID,JSON.stringify(health),now);return {ok:true};}
+ heartbeat(b,now=Date.now()){if(b.protocol_version!==1)fail('Unsupported protocol');const ips=[...new Set([b.local_ip,...(Array.isArray(b.local_ips)?b.local_ips.slice(0,8):[])].filter(localIPv4))].slice(0,8);const health={local_ip:ips[0]??null,local_ips:ips,printing_enabled:b.printing_enabled===true,printer_configured:b.printer_configured===true,cups:b.cups===true,queue_length:Number.isSafeInteger(b.queue_length)?b.queue_length:0,printer_state:b.printer_state??null,physical_print_confirmed:false};this.db.prepare('INSERT INTO print_device VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET database_id=excluded.database_id,heartbeat=excluded.heartbeat,last_seen=excluded.last_seen').run(this.env.PRINT_AGENT_ID||'station-printer-1',this.env.PRINT_AGENT_DATABASE_ID,JSON.stringify(health),now);return {ok:true};}
 }
 
 export function printHandler(store,admin,origin){return async(req,res,url)=>{

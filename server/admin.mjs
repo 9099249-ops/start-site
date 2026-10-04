@@ -62,7 +62,7 @@ export class AdminStore{
   if(!u||this.accounts.archived(u.id)||!verify(b.password,u.password))fail('Неверный логин или пароль.',401);
   const token=randomBytes(32).toString('hex');this.db.prepare('DELETE FROM admin_sessions WHERE expires<?').run(Date.now());this.db.prepare('INSERT INTO admin_sessions VALUES(?,?,?)').run(hash(token),u.id,Date.now()+43200000);return token;
  }
- user(token){if(!token)return null;return this.db.prepare('SELECT u.id,u.login,u.role FROM admin_sessions s JOIN admin_users u ON u.id=s.user_id WHERE s.token=? AND s.expires>? AND NOT EXISTS(SELECT 1 FROM archived_accounts a WHERE a.user_id=u.id)').get(hash(token),Date.now())||null;}
+ user(token,allowSchedule=false){if(!token)return null;const user=this.db.prepare('SELECT u.id,u.login,u.role FROM admin_sessions s JOIN admin_users u ON u.id=s.user_id WHERE s.token=? AND s.expires>? AND NOT EXISTS(SELECT 1 FROM archived_accounts a WHERE a.user_id=u.id)').get(hash(token),Date.now())||null;if(user&&this.schedule.enabled()&&!this.schedule.canWork(user))return allowSchedule?{...user,scheduleOnly:true}:null;return user;}
  logout(token){this.db.prepare('DELETE FROM admin_sessions WHERE token=?').run(hash(token||''));}
  audit(user,action,id=null){this.db.prepare('INSERT INTO admin_audit(actor,action,rental_id,created) VALUES(?,?,?,?)').run(user.id,action,id,Date.now());}
  manualSale(b,u,now=Date.now()){
@@ -70,7 +70,7 @@ export class AdminStore{
   if(!/^[a-f0-9-]{36}$/.test(b.requestId||'')||!line(b.title,120)||!Number.isSafeInteger(b.quantity)||b.quantity<1||b.quantity>1000||!Number.isSafeInteger(b.unitCents)||b.unitCents<1||b.unitCents*b.quantity>100000000)fail('Укажите название, количество и цену больше нуля.');
   const details=JSON.stringify({title:b.title.trim(),quantity:b.quantity,unitCents:b.unitCents});
   return this.workforce.tx(()=>{const old=this.db.prepare('SELECT id,custom_json FROM rentals WHERE request_id=?').get(b.requestId);if(old){if(old.custom_json!==details)fail('Запрос уже использован. Проверьте историю продаж.',409);return {id:old.id,duplicate:true};}
-   this.workforce.requireOnDuty(now);const local=new Date(now+10800000).toISOString().slice(0,16);
+   this.workforce.requireOnDuty(now,u);const local=new Date(now+10800000).toISOString().slice(0,16);
    const id=Number(this.db.prepare("INSERT INTO rentals(request_id,equipment,quantity,name,phone,departed,created,created_by,returned,returned_by,expected_return,custom_json) VALUES(?,'manual',?,'Без клиента','',?,?,?,?,?,?,?)").run(b.requestId,b.quantity,local,now,u.id,now,u.id,now,details).lastInsertRowid);
    if(this.rentalTerminal?.enabled&&u.role!=='waiter')this.db.prepare('UPDATE rentals SET initial_due=? WHERE id=?').run(b.quantity*b.unitCents,id);else this.db.prepare('INSERT INTO payments(rental_id,amount,method,day,created,user_id,note) VALUES(?,?,?,?,?,?,?)').run(id,b.quantity*b.unitCents,'unspecified',moscowDay(now),now,u.id,'Свободная цена: '+b.title.trim());
    this.workforce.audit(u,'manual_sale',id,null,{...JSON.parse(details),totalCents:b.quantity*b.unitCents},'Продажа со свободной ценой',now);return {id};
@@ -162,12 +162,12 @@ export class AdminStore{
  }
  dashboard(day,user){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||!Number.isFinite(Date.parse(day))||new Date(day).toISOString().slice(0,10)!==day)fail('Неверная дата.');
-  const sql=`SELECT r.*,${this.guestBills?"(SELECT bill_id FROM guest_bill_lines WHERE kind='rental' AND source_id=r.id)":'NULL'} guestBillId,u.login issuedBy,v.login returnedBy,(SELECT method FROM payments p WHERE p.rental_id=r.id ORDER BY id LIMIT 1) method,(SELECT coalesce(sum(amount),0) FROM payments p WHERE p.rental_id=r.id) paid FROM rentals r JOIN admin_users u ON u.id=r.created_by LEFT JOIN admin_users v ON v.id=r.returned_by`;
+  const rates=rentalRates(this);const sql=`WITH payment_totals AS (SELECT rental_id,sum(amount) paid,min(id) first_id FROM payments GROUP BY rental_id) SELECT r.*,${this.guestBills?"(SELECT bill_id FROM guest_bill_lines WHERE kind='rental' AND source_id=r.id)":'NULL'} guestBillId,u.login issuedBy,v.login returnedBy,first_payment.method method,coalesce(pt.paid,0) paid FROM rentals r JOIN admin_users u ON u.id=r.created_by LEFT JOIN admin_users v ON v.id=r.returned_by LEFT JOIN payment_totals pt ON pt.rental_id=r.id LEFT JOIN payments first_payment ON first_payment.id=pt.first_id`;
   const reserved=this.db.prepare(sql+' WHERE r.returned IS NULL ORDER BY r.departed').all();const active=reserved.filter(r=>r.initial_due===0);const pendingRentals=this.db.prepare(sql+' WHERE r.initial_due>0 ORDER BY r.id').all();
   const returned=this.db.prepare(sql+" WHERE r.returned IS NOT NULL AND date(r.returned/1000,'unixepoch','+3 hours')=? ORDER BY r.returned DESC").all(day);
   const dayRentals=this.db.prepare(sql+" WHERE substr(r.departed,1,10)<=? AND (r.returned IS NULL OR date(r.returned/1000,'unixepoch','+3 hours')>=?) ORDER BY r.departed DESC,r.id DESC").all(day,day);
   const totals=this.db.prepare('SELECT method,sum(amount) amount FROM payments WHERE day=? GROUP BY method').all(day);
-  const refundsCents=this.refunds.total(day,Date.now(),'rental');return {user,day,refundsCents,now:Date.now(),nearby:nearbyBookings(this),active,pendingRentals,rentalPayments:this.rentalTerminal?.list()||[],returned,dayRentals,totals,fleet:orderedFleet(this,fleet).map(([id,label,total])=>({id,label,total,price:rentalRates(this).find(i=>i.id===id)?.price??null,available:total-reserved.filter(r=>r.equipment===id).reduce((n,r)=>n+r.quantity,0)}))};
+  const refundsCents=this.refunds.total(day,Date.now(),'rental');return {user,day,refundsCents,now:Date.now(),nearby:nearbyBookings(this),active,pendingRentals,rentalPayments:this.rentalTerminal?.list()||[],returned,dayRentals,totals,fleet:orderedFleet(this,fleet).map(([id,label,total])=>({id,label,total,price:rates.find(i=>i.id===id)?.price??null,available:total-reserved.filter(r=>r.equipment===id).reduce((n,r)=>n+r.quantity,0)}))};
  }
  shiftSettings(user){if(user.role!=='admin')fail('Только администратор.',403);return this.db.prepare('SELECT * FROM salary_settings WHERE id=1').get();}
  saveShiftSettings(b,user){const s=this.workforce.settings();return this.workforce.saveSettings({revision:b.revision??s.revision,fixedCents:b.fixedCents,bonusPercent:b.bonusPercent,hourlyCents:s.hourly_cents,payMode:s.pay_mode,distribution:s.distribution},user);}
@@ -194,7 +194,7 @@ export function adminHandler(store,origin){return async(req,res,url)=>{
  const cookie=t=>`__Host-start_session=${t}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${t?43200:0}`;
  try{
   if(!store)return reply(503,{error:'Админка не настроена.'});
-  if(req.method==='GET'&&url.pathname==='/api/admin/session')return reply(200,{user:store.user(token),configured:store.configured()});
+  if(req.method==='GET'&&url.pathname==='/api/admin/session')return reply(200,{user:store.user(token,true),configured:store.configured()});
   if(!['GET','POST'].includes(req.method))return reply(405,{error:'Метод не поддерживается.'});
   let b={};
   if(req.method==='POST'){
@@ -204,9 +204,9 @@ export function adminHandler(store,origin){return async(req,res,url)=>{
   }
   const ip=req.headers['x-real-ip']||req.socket.remoteAddress;
   if(req.method==='POST'&&url.pathname==='/api/admin/setup'){store.setup(b,ip);return reply(200,{ok:true});}
-  if(req.method==='POST'&&url.pathname==='/api/admin/login'){const t=store.login(b,ip);return reply(200,{ok:true},{'Set-Cookie':cookie(t)});}
-  const user=store.user(token);if(!user)return reply(401,{error:'Войдите в админку.'});
-  if(url.pathname.startsWith('/api/admin/guest-bills')){const g=store.guestBills;if(!g)return reply(503,{error:'Счета временно недоступны.'});if(req.method==='GET')return reply(200,url.searchParams.has('id')?g.get(Number(url.searchParams.get('id'))):g.list(user));const route=url.pathname.split('/').pop();if(route==='create')return reply(200,g.create(b,user));if(route==='pay')return reply(200,await g.begin(b,user));if(route==='cancel')return reply(200,g.cancel(b,user));if(route==='website-paid')return reply(200,g.manualWebsite(b,user));return reply(404,{error:'Неизвестное действие.'});}
+  if(req.method==='POST'&&url.pathname==='/api/admin/login'){const t=store.login(b,ip);return reply(200,{ok:true,scheduleOnly:!!store.user(t,true)?.scheduleOnly},{'Set-Cookie':cookie(t)});}
+  const user=store.user(token,['/api/admin/schedule','/api/admin/logout'].includes(url.pathname));if(!user)return reply(401,{error:'Войдите в админку.'});
+  if(url.pathname.startsWith('/api/admin/guest-bills')){const g=store.guestBills;if(!g)return reply(503,{error:'Счета временно недоступны.'});if(req.method==='GET')return reply(200,url.searchParams.has('id')?g.get(Number(url.searchParams.get('id'))):g.list(user));const route=url.pathname.split('/').pop();if(route==='create')return reply(200,g.create(b,user));if(route==='pay')return reply(200,await g.begin(b,user));if(route==='cancel')return reply(200,g.cancel(b,user));if(route==='cancel-line')return reply(200,g.cancelLine(b,user));if(route==='manual-paid')return reply(200,g.manualPaid(b,user));if(route==='website-paid')return reply(200,g.manualWebsite(b,user));return reply(404,{error:'Неизвестное действие.'});}
   if(url.pathname==='/api/admin/cash-ledger')return reply(200,req.method==='GET'?store.cashLedger.summary(user):store.cashLedger.change(b,user));
   if(url.pathname==='/api/admin/clients.xlsx'&&req.method==='GET'){if(user.role!=='admin')return reply(403,{error:'Только администратор.'});res.writeHead(200,{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename=clients.xlsx','Cache-Control':'no-store'});res.end(clientsXlsx(store));return true;}
   if(url.pathname==='/api/admin/fleet-order'&&req.method==='GET'){if(user.role!=='admin')return reply(403,{error:'Только администратор.'});return reply(200,fleetOrder(store,fleet));}
@@ -223,13 +223,14 @@ export function adminHandler(store,origin){return async(req,res,url)=>{
   if(url.pathname==='/api/admin/manual-sale'&&req.method==='POST')return reply(200,store.manualSale(b,user));
   if(url.pathname==='/api/admin/refunds'&&req.method==='GET')return reply(200,store.refunds.info(url.searchParams.get('kind'),Number(url.searchParams.get('id')),user));
   if(url.pathname==='/api/admin/refunds'&&req.method==='POST')return reply(200,store.refunds.create(b,user));
+  if(req.method==='POST'&&url.pathname==='/api/admin/rental-reconcile'){if(!store.rentalTerminal)fail('Касса не подключена.',503);return reply(200,store.rentalTerminal.reconcile(b,user));}
+  if(req.method==='POST'&&url.pathname==='/api/admin/rental-pay'){if(!store.rentalTerminal)fail('Касса не подключена.',503);return reply(200,await store.rentalTerminal.begin(b,user));}
+  if(req.method==='POST'&&url.pathname==='/api/admin/rental-cancel-pending')return reply(200,store.rentalTerminal.cancel(b,user));
   if(user.role==='waiter'&&url.pathname!=='/api/admin/logout')return reply(403,{error:'Используйте кабинет кафе.'});
   if(req.method==='GET'&&url.pathname==='/api/admin/calendar')return reply(200,calendarData(store,fleet,url.searchParams.get('date')||moscowDay(),Number(url.searchParams.get('days')||1)));
   if(req.method==='GET'&&url.pathname==='/api/admin/availability'){const start=localStamp(url.searchParams.get('start')),end=localStamp(url.searchParams.get('end'));return reply(200,{items:fleet.map(([id])=>availability(store.db,fleet,id,start,end,{close:store.sms?.content?.live().close}))});}
   if(req.method==='GET'&&url.pathname==='/api/admin/search')return reply(200,deskSearch(store,fleet,url.searchParams.get('q'),user));
-  if(req.method==='POST'&&(['/api/admin/rentals','/api/admin/extend'].includes(url.pathname)||url.pathname==='/api/admin/return'&&store.db.prepare('SELECT extension_due FROM rentals WHERE id=?').get(b.id)?.extension_due>0))store.workforce.requireOnDuty();
-  if(req.method==='POST'&&url.pathname==='/api/admin/rental-pay'){if(!store.rentalTerminal)fail('Касса не подключена.',503);return reply(200,await store.rentalTerminal.begin(b,user));}
-  if(req.method==='POST'&&url.pathname==='/api/admin/rental-cancel-pending')return reply(200,store.rentalTerminal.cancel(b,user));
+  if(req.method==='POST'&&(['/api/admin/rentals','/api/admin/extend'].includes(url.pathname)||url.pathname==='/api/admin/return'&&store.db.prepare('SELECT extension_due FROM rentals WHERE id=?').get(b.id)?.extension_due>0))store.workforce.requireOnDuty(Date.now(),user);
   if(req.method==='POST'&&url.pathname==='/api/admin/extend')return reply(200,extendRental(store,fleet,b,user));
   if(req.method==='POST'&&url.pathname==='/api/admin/undo-return')return reply(200,undoReturn(store,fleet,b,user));
   if(req.method==='GET'&&url.pathname==='/api/admin/dashboard')return reply(200,store.dashboard(url.searchParams.get('day')||moscowDay(),user));

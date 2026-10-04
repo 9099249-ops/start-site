@@ -24,3 +24,11 @@ fieldset{border:1px solid #d9e2e8;border-radius:5px;margin:7px 0;padding:8px}dia
 .desk-ready>header{display:none}
 
 .place-assignment{display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin:8px 0}.place-assignment label{flex:1;min-width:140px}.place-assignment button{min-height:44px}
+
+/* Payment status stays visible independently of kitchen status. */
+.theme-cafe .order-row.payment-green{background:#edf8ee!important;border-left:6px solid #24803b!important;color:#173d24!important}
+.theme-cafe .order-row.payment-yellow{background:#fff8d9!important;border-left:6px solid #ad7b00!important;color:#534100!important}
+.theme-cafe .order-row.payment-red{background:#fff0ee!important;border-left:6px solid #b6332b!important;color:#75211b!important}
+.payment-label{font-weight:700}.terminal-issues{padding:12px;border:1px solid #b6332b;border-radius:10px;background:#fff0ee;margin:10px 0}.terminal-issues p{margin:6px 0}.terminal-issues button{margin:4px}.theme-cafe #order-detail[data-payment-tone=red]>.payment-state{border-left:6px solid #b6332b}.theme-cafe #order-detail[data-payment-tone=green]>.payment-state{border-left:6px solid #24803b}.theme-cafe #order-detail[data-payment-tone=yellow]>.payment-state{border-left:6px solid #ad7b00}
+
+.order-actions{display:flex;flex-direction:column;justify-content:center;gap:5px}.order-actions .order-next{width:100%;margin:0}.theme-cafe .order-line:has(.order-ready){grid-template-columns:minmax(0,1fr) 150px}.theme-cafe .order-line .order-actions .order-ready{background:#246b49;color:#fff;font-size:15px!important;line-height:1.25;padding:10px}.theme-cafe .order-line .order-actions .order-ready:focus-visible{outline:3px solid #123c2b;outline-offset:2px}

@@ -2,6 +2,6 @@
 .refund-panel>summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-weight:600}
 .refund-panel form{display:grid;gap:8px;min-width:0}
 .refund-panel label{display:grid;gap:4px;min-width:0}
-.refund-panel input,.refund-panel textarea,.refund-panel button{box-sizing:border-box;width:100%;max-width:100%;min-height:44px;font:inherit}
-.refund-panel input,.refund-panel textarea{padding:8px;border:1px solid #c9c3ba;border-radius:8px}
+.refund-panel input,.refund-panel select,.refund-panel textarea,.refund-panel button{box-sizing:border-box;width:100%;max-width:100%;min-height:44px;font:inherit}
+.refund-panel input,.refund-panel select,.refund-panel textarea{padding:8px;border:1px solid #c9c3ba;border-radius:8px}
 .refund-panel p{margin:6px 0;line-height:1.4}

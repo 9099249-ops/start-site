@@ -8,7 +8,7 @@ import {extendRental} from './rental-actions.mjs';
 const u={id:1,role:'admin'},staff={id:2,role:'staff'};
 function fixture(){
  const a=new AdminStore(':memory:');a.db.exec("INSERT INTO admin_users VALUES(1,'admin','admin','unused'),(2,'station','staff','unused')");a.workforce.requireOnDuty=()=>{};
- const calls=[],answers=[],connection={read:()=>({apiKey:'test',deviceId:709740}),request:async(url,options)=>{calls.push({url,...options});const result=answers.shift();if(result instanceof Error)throw result;return {ok:true,json:async()=>result};}};
+ const calls=[],answers=[],connection={read:()=>({apiKey:'test',deviceId:709740}),request:async(url,options)=>{if(url.includes('/v4/Shifts'))return {ok:true,json:async()=>url.includes('/v4/Shifts?')?{rows:[{id:'test-shift',device:{id:709740}}]}:{id:'test-shift',device:{id:709740},shiftOpenedReport:{dateTime:new Date().toISOString()},shiftClosedReport:null}};calls.push({url,...options});const result=answers.shift();if(result instanceof Error)throw result;return {ok:true,json:async()=>result};}};
  new AqsiPilot(a,connection);const p=new AqsiRental(a,connection,{enabled:true});a.rentalTerminal=p;
  const now=Date.now(),local=t=>new Date(t+10800000).toISOString().slice(0,16),body=extra=>({requestId:randomUUID(),equipment:'sup',quantity:1,name:'Тест',phone:'+79000000000',departed:local(now),expectedReturn:local(now+3600000),amount:'1000',...extra});
  return {a,p,connection,calls,answers,body,create:extra=>a.create(body(extra),u),row:id=>a.db.prepare('SELECT * FROM rentals WHERE id=?').get(id)};
@@ -70,4 +70,22 @@ test('Rental cash after cancellation: issue and extension accounted once without
 test('Rental confirmed cancellation allows abandoning unpaid issue, retaining operation history',async()=>{
  const f=fixture();try{const id=f.create(),previous=await cancelRentalPayment(f,id,'issue');f.p.cancel({id,revision:f.row(id).revision},u);assert.equal(f.row(id).initial_due,-1);assert.equal(f.p.list().length,0);assert.equal(f.p.row(previous).state,'cancelled');await assert.rejects(f.p.begin({id,phase:'issue',revision:f.row(id).revision,retryPaymentId:previous},u));
  }finally{f.a.close();}
+});
+
+const reconciliation=(f,id,result,extra={})=>({id,phase:'issue',revision:f.row(id).revision,paymentId:f.p.payment(id,'issue')?.id||null,result,confirmed:true,terminalIdle:true,receiptExists:true,note:'Проверено сотрудником',...extra});
+const agePayment=(f,id,phase='issue')=>f.a.db.prepare('UPDATE aqsi_rental SET created=?,updated=? WHERE id=?').run(Date.now()-180000,Date.now()-180000,f.p.payment(id,phase).id);
+test('Staff can release unknown rental payment, cancel issue or retry without a second debit from reconciliation',async()=>{
+ const f=fixture();try{const id=f.create();f.answers.push(Error('lost'));await f.p.begin({id,phase:'issue',revision:0},u);const b=reconciliation(f,id,'unpaid');assert.throws(()=>f.p.reconcile(b,staff),/двух минут/);agePayment(f,id);const count=f.calls.length;f.p.reconcile(b,staff);f.p.reconcile(b,staff);assert.equal(f.calls.length,count);assert.equal(f.p.terminalBusy(),false);f.p.cancel({id,revision:f.row(id).revision},staff);assert.equal(f.row(id).initial_due,-1);}finally{f.a.close();}
+});
+for(const method of ['cash','card'])test('Manual rental '+method+' settles once, attributes receiver and sends no payment or receipt',async()=>{
+ const f=fixture();try{const id=f.create();f.answers.push(Error('lost'));await f.p.begin({id,phase:'issue',revision:0},u);agePayment(f,id);const b=reconciliation(f,id,method),count=f.calls.length;assert.throws(()=>f.p.reconcile({...b,receiptExists:false},staff),/чек/);assert.throws(()=>f.p.reconcile({...b,revision:99},staff),/изменилась/);f.p.reconcile(b,staff);f.p.reconcile(b,staff);assert.equal(f.calls.length,count);assert.equal(f.row(id).initial_due,0);const payments=f.a.db.prepare('SELECT * FROM payments WHERE rental_id=?').all(id);assert.equal(payments.length,1);assert.equal(payments[0].method,method);assert.equal(payments[0].user_id,staff.id);assert.equal(f.p.terminalBusy(),false);assert.throws(()=>f.p.reconcile({...b,result:'unpaid'},staff),/учтена/);assert.throws(()=>f.p.cancel({id,revision:f.row(id).revision},staff));}finally{f.a.close();}
+});
+test('Manual payment without terminal connection and extension payment preserve rental lifecycle',()=>{
+ const f=fixture();try{const id=f.create();f.p.enabled=false;f.p.reconcile(reconciliation(f,id,'card'),staff);assert.equal(f.row(id).returned,null);extendRental(f.a,fleet,{id,revision:f.row(id).revision,minutes:30},u);f.p.reconcile(reconciliation(f,id,'cash',{phase:'extension',paymentId:null}),staff);assert.ok(f.row(id).returned);assert.equal(f.row(id).extension_due,0);assert.deepEqual(f.a.db.prepare('SELECT method FROM payments ORDER BY id').all().map(x=>x.method),['card','cash']);assert.equal(f.calls.length,0);}finally{f.a.close();}
+});
+test('Confirmed payment cannot be cancelled; employee can confirm existing receipt or release receipt lock',async()=>{
+ const f=fixture();try{const id=f.create();await confirm(f,id,'issue');const payment=f.p.payment(id,'issue');f.p.set(payment.id,'receipt_unknown');agePayment(f,id);const count=f.calls.length;assert.throws(()=>f.p.reconcile(reconciliation(f,id,'unpaid'),staff));f.p.reconcile(reconciliation(f,id,'terminal_free'),staff);assert.equal(f.p.terminalBusy(),false);assert.equal(f.p.payment(id,'issue').state,'receipt_unknown');f.p.reconcile(reconciliation(f,id,'receipt_exists'),staff);assert.equal(f.p.payment(id,'issue').state,'done');assert.equal(f.a.db.prepare('SELECT count(*) n FROM payments WHERE rental_id=?').get(id).n,1);assert.equal(f.calls.length,count);}finally{f.a.close();}
+});
+test('Reconciliation rejects unauthenticated roles and accepts an employee with waiter role',()=>{
+ const f=fixture();try{const id=f.create(),b=reconciliation(f,id,'cash');assert.throws(()=>f.p.reconcile(b,{id:2,role:'guest'}),e=>e.status===403);f.p.reconcile(b,{...staff,role:'waiter'});assert.equal(f.row(id).initial_due,0);}finally{f.a.close();}
 });

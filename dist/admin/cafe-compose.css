@@ -95,3 +95,14 @@ body.cafe-integrated #cart-dialog #free-order-options.cafe-employee-order>button
 body.cafe-integrated #cart-dialog .cafe-employee-order>p{margin:4px 0}
 body.cafe-integrated #cart-dialog.cafe-employee-selected .cart-footer .cafe-guest-action{display:none!important}
 body.cafe-integrated #cart-dialog.cafe-employee-selected #staff-place-label{display:none!important}
+
+/* Compact, unambiguous ingredient choices in the admin composer. */
+body.cafe-integrated #dish-dialog #dish-options fieldset{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding:10px;margin:8px 0}
+body.cafe-integrated #dish-dialog #dish-options .cafe-choice{display:flex!important;align-items:center;gap:8px;min-width:0;min-height:40px;margin:0;padding:7px 9px;border:1px solid #ded8d5;border-radius:6px;background:#fff;font-size:14px;line-height:1.25;cursor:pointer;overflow-wrap:anywhere}
+body.cafe-integrated #dish-dialog #dish-options .cafe-choice[hidden]{display:none!important}
+body.cafe-integrated #dish-dialog #dish-options .cafe-choice:has(input:checked){background:#f7e8ed;border-color:#813047;color:#682238;font-weight:700}
+body.cafe-integrated #dish-dialog #dish-options .cafe-choice:focus-within{outline:2px solid #813047;outline-offset:1px}
+body.cafe-integrated #dish-dialog #dish-options .cafe-choice input{width:18px;height:18px;min-width:18px;min-height:18px;max-width:18px;margin:0;padding:0;flex:0 0 18px;accent-color:#813047}
+body.cafe-integrated #dish-dialog #dish-options .dish-choice-search,body.cafe-integrated #dish-dialog #dish-options .dish-choice-empty{grid-column:1/-1;margin:0}
+body.cafe-integrated #dish-dialog #dish-options .dish-choice-search{font-size:16px;min-height:40px;padding:8px 10px}
+@media(max-width:400px){body.cafe-integrated #dish-dialog #dish-options fieldset{grid-template-columns:1fr}}

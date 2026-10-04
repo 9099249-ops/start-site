@@ -23,6 +23,10 @@ export function transportDiagnostic(error){
  return {kind:['TimeoutError','AbortError'].includes(error?.name)?'timeout':'network',...(codes.has(code)?{networkCode:code}:{})};
 }
 function message(d){
+ if(d.kind==='shift_closed')return 'На CS50 закрыта или истекла фискальная смена. Откройте её на кассе и повторите оплату. Деньги не списывались.';
+ if(d.kind==='shift_unavailable')return 'Не удалось проверить фискальную смену CS50. Оплата не запускалась, деньги не списывались. Проверьте связь и повторите.';
+ if(d.kind==='shift_recovery')return 'Фискальная смена открыта. Формируем только чек по уже принятой оплате, без повторного списания.';
+ if(d.phase==='receipt'&&d.operationStatus==='Error'&&d.providerProblems==='ShiftMustBeOpened')return 'Оплата прошла, но на CS50 закрыта фискальная смена. Откройте её на кассе: чек будет завершён без повторного списания.';
  const target=d.phase==='receipt'?'фискального чека':'оплаты';
  if(d.kind==='restart')return 'Сайт перезапустился во время передачи '+target+'. Результат неизвестен — требуется сверка с кассой.';
  if(d.kind==='configuration')return 'Настройки подключения aQsi изменились. Проверьте подключение кассы.';
@@ -55,5 +59,10 @@ export class AqsiDiagnostics {
   this.db.prepare('INSERT INTO aqsi_diagnostic_events(scope,payment_id,phase,event_json,fingerprint,created_at,seen_at) VALUES(?,?,?,?,?,?,?)').run(this.scope,paymentId,phase,json,fingerprint,now,now);
   this.db.prepare('DELETE FROM aqsi_diagnostic_events WHERE scope=? AND id NOT IN (SELECT id FROM aqsi_diagnostic_events WHERE scope=? ORDER BY id DESC LIMIT 5000)').run(this.scope,this.scope);
  }
- latest(paymentId){const row=this.db.prepare('SELECT event_json,seen_at FROM aqsi_diagnostic_events WHERE scope=? AND payment_id=? ORDER BY id DESC LIMIT 1').get(this.scope,paymentId);if(!row)return null;const d=JSON.parse(row.event_json);return {message:d.message,checkedAt:row.seen_at,phase:d.phase,...(d.httpStatus?{httpStatus:d.httpStatus}:{}),...(d.operationStatus?{operationStatus:d.operationStatus}:{})};}
+ latestMany(ids){
+  if(!ids.length)return new Map();
+  const rows=this.db.prepare(`SELECT e.payment_id,e.event_json,e.seen_at FROM aqsi_diagnostic_events e JOIN (SELECT max(id) id FROM aqsi_diagnostic_events WHERE scope=? AND payment_id IN (${ids.map(()=>'?').join(',')}) GROUP BY payment_id) last ON last.id=e.id`).all(this.scope,...ids);
+  return new Map(rows.map(r=>{const d=JSON.parse(r.event_json);return [r.payment_id,{message:d.message,checkedAt:r.seen_at,phase:d.phase,...(['shift_closed','shift_unavailable'].includes(d.kind)?{paymentNotStarted:true}:{}),...(d.httpStatus?{httpStatus:d.httpStatus}:{}),...(d.operationStatus?{operationStatus:d.operationStatus}:{})}];}));
+ }
+ latest(paymentId){const row=this.db.prepare('SELECT event_json,seen_at FROM aqsi_diagnostic_events WHERE scope=? AND payment_id=? ORDER BY id DESC LIMIT 1').get(this.scope,paymentId);if(!row)return null;const d=JSON.parse(row.event_json);return {message:d.message,checkedAt:row.seen_at,phase:d.phase,...(['shift_closed','shift_unavailable'].includes(d.kind)?{paymentNotStarted:true}:{}),...(d.httpStatus?{httpStatus:d.httpStatus}:{}),...(d.operationStatus?{operationStatus:d.operationStatus}:{})};}
 }

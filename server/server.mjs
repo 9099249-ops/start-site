@@ -1,3 +1,4 @@
+import {CafeBoard,cafeBoardHandler} from './cafe-board.mjs';
 import {serveWorkspace} from './admin-workspace.mjs';
 import {GuestBills} from './guest-bills.mjs';
 import {deskHealthHandler} from './desk-health.mjs';
@@ -51,6 +52,7 @@ const aqsiRental=adminStore?new AqsiRental(adminStore,aqsi,{enabled:process.env.
 if(adminStore)adminStore.rentalTerminal=aqsiRental;
 if(aqsiRental){const tick=()=>aqsiRental.tick().catch(()=>console.error('aQsi rental: status check unavailable'));setInterval(tick,5000).unref();setTimeout(tick,1800).unref();}
 const guestBills=adminStore?new GuestBills(adminStore,aqsi,cafeStore):null;if(adminStore)adminStore.guestBills=guestBills;if(guestBills){const tick=()=>guestBills.tick().catch(()=>console.error('Guest bill payment check unavailable'));setInterval(tick,5000).unref();}
+const handleCafeBoard=cafeBoardHandler(new CafeBoard(cafeStore),adminStore);
 const handleCafe=cafeHandler(cafeStore,adminStore,origin);
 const inventoryStore=adminStore?new InventoryStore(adminStore):null;
 const handleInventory=inventoryHandler(inventoryStore,adminStore,origin);
@@ -68,6 +70,7 @@ http.createServer(async(req,res)=>{
     if(await handlePrint(req,res,url))return;
     if(await handleWorkforce(req,res,url))return;
     if(await handleInventory(req,res,url))return;
+    if(await handleCafeBoard(req,res,url))return;
     if(await handleCafe(req,res,url))return;
     if(url.pathname==='/admin/purchase'){res.writeHead(302,{Location:'/admin/purchase/'});res.end();return;}
     if(['/cafe','/menu.html','/admin/cafe'].includes(url.pathname)){res.writeHead(302,{Location:url.pathname.startsWith('/admin')?'/admin/cafe/':'/cafe/'+url.search});res.end();return;}
