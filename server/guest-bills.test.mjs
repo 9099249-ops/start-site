@@ -49,3 +49,28 @@ for(const method of ['cash','card'])test('Guest bill manual '+method+' payment r
 test('Paid bill remains accessible until its food is issued, then leaves open list',async t=>{const f=fixture(t),b=f.bill(false),r=f.c.create(f.body({guestBillId:b.id}),s);await f.g.begin({id:b.id,revision:f.g.get(b.id).revision,cash:true},s);assert.ok(f.g.list(s).items.some(i=>i.id===b.id));const o=f.c.order(r.id,s);f.c.status({id:o.id,revision:o.revision,status:'DELIVERED'},s);assert.equal(f.g.list(s).items.some(i=>i.id===b.id),false);});
 
 test('Cancelling prepared guest positions preserves ingredient consumption',t=>{const f=fixture(t),b=f.bill(true),r=f.c.create(f.body({guestBillId:b.id}),s),g=f.g.get(b.id),l=g.lines[0],before=f.a.db.prepare('SELECT id,current_milli FROM inventory_items').all();f.g.cancelLine({id:b.id,revision:g.revision,lineId:l.id,orderRevision:l.orderRevision,reason:'Уже готовили',prepared:true},s);assert.deepEqual(f.a.db.prepare('SELECT id,current_milli FROM inventory_items').all(),before);assert.equal(f.g.get(b.id).totalCents,0);});
+
+const billSnapshot=f=>JSON.stringify(['guest_bills','guest_bill_lines','guest_bill_payments','aqsi_guest','cafe_orders','cafe_order_events','cafe_notifications','cafe_stock_usage','inventory_items','inventory_transactions','financial_audit_log'].map(table=>f.a.db.prepare('SELECT * FROM '+table).all()));
+test('Guest bill attachment failure rolls back order, stock and association as one unit',t=>{
+ const f=fixture(t),b=f.bill(true),body=f.body({guestBillId:b.id}),before=billSnapshot(f),attach=f.g.attach.bind(f.g);
+ f.g.attach=(...args)=>{attach(...args);throw Error('Injected attachment failure');};
+ assert.throws(()=>f.c.create(body,s),/Injected/);assert.equal(billSnapshot(f),before);
+ f.g.attach=attach;const r=f.c.create(body,s);assert.equal(f.g.get(b.id).lines.length,1);assert.equal(f.g.get(b.id).lines[0].source_id,r.id);
+});
+test('Guest cash accounting failure rolls back every order and payment before safe retry',async t=>{
+ const f=fixture(t),b=f.bill(false);f.c.create(f.body({guestBillId:b.id}),s);f.c.create(f.body({guestBillId:b.id}),s);
+ const body={id:b.id,revision:f.g.get(b.id).revision,cash:true},before=billSnapshot(f),event=f.c.event.bind(f.c);let paid=0;
+ f.c.event=(...args)=>{const result=event(...args);if(args[1]==='PAID'&&++paid===2)throw Error('Injected accounting failure');return result;};
+ await assert.rejects(f.g.begin(body,s),/Injected/);assert.equal(billSnapshot(f),before);assert.equal(f.calls.length,0);
+ f.c.event=event;await f.g.begin(body,s);await f.g.begin(body,s);const bill=f.g.get(b.id);
+ assert.ok(bill.paid_at);assert.equal(f.a.db.prepare('SELECT count(*) n FROM aqsi_guest').get().n,1);assert.equal(f.a.db.prepare("SELECT count(*) n FROM cafe_order_events WHERE kind='PAID'").get().n,2);assert.ok(bill.lines.every(l=>f.c.order(l.source_id,s).details.terminalPaidAt===bill.paid_at));assert.equal(f.calls.length,0);
+});
+test('Whole bill cancellation failure rolls back preceding stock returns and preserves exact audit on retry',t=>{
+ const f=fixture(t),b=f.bill(true);f.c.create(f.body({guestBillId:b.id}),s);f.c.create(f.body({guestBillId:b.id}),s);
+ const body={id:b.id,revision:f.g.get(b.id).revision,reason:'Гости ушли'},before=billSnapshot(f),cancel=f.c.stock.cancel.bind(f.c.stock);let calls=0;
+ f.c.stock.cancel=(...args)=>{const result=cancel(...args);if(++calls===2)throw Error('Injected cancellation failure');return result;};
+ assert.throws(()=>f.g.cancel(body,s),/Injected/);assert.equal(billSnapshot(f),before);
+ f.c.stock.cancel=cancel;f.g.cancel(body,s);const bill=f.g.get(b.id);assert.ok(bill.cancelled_at);
+ for(const line of bill.lines){const order=f.c.order(line.source_id,s);assert.equal(order.status,'CANCELLED');const event=order.events.find(e=>e.kind==='CANCELLED');assert.equal(event.comment,body.reason);assert.equal(event.stock.state,'restored');}
+ assert.equal(f.calls.length,0);
+});

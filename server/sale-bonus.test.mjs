@@ -29,8 +29,8 @@ test('Server sales mode freezes closed salary and does not use a later arrival f
  w.action({requestId:randomUUID(),sessionId:ivan.id},{id:2,role:'staff'},'end',at('21:00'));w.action({requestId:randomUUID(),sessionId:andrey.id},{id:3,role:'staff'},'end',at('21:00'));
  let c=w.calculate(day,at('21:01'));assert.deepEqual(c.employees.map(e=>[e.fixed_cents,e.bonus_cents]),[[250000,10000],[187500,5000]]);
  const shift=a.openShift({day,cashStartCents:0,employeeIds:[2,3]},u,at('21:02'));a.closeShift({shiftId:shift,cashEndCents:370000,cashlessCents:0},u,at('21:03'));
- c=w.calculate(day,at('21:04'));assert.deepEqual(c.employees.map(e=>e.salary_cents),[262000,194000]);
- w.saveSettings({...w.settings(),revision:1,fixedCents:999999,hourlyCents:0,bonusPercent:1,payMode:'fixed',distribution:'equal'},u,at('21:05'));assert.deepEqual(w.calculate(day,at('21:06')).employees.map(e=>e.salary_cents),[262000,194000]);
+ c=w.calculate(day,at('21:04'));assert.deepEqual(c.employees.map(e=>e.salary_cents),[260000,192500]);
+ w.saveSettings({...w.settings(),revision:1,fixedCents:999999,hourlyCents:0,bonusPercent:1,payMode:'fixed',distribution:'equal'},u,at('21:05'));assert.deepEqual(w.calculate(day,at('21:06')).employees.map(e=>e.salary_cents),[260000,192500]);
 });
 
 import {enableSaleBonus} from '../deploy/enable-sale-bonus.mjs';

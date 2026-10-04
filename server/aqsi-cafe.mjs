@@ -32,7 +32,7 @@ export class AqsiCafe extends AqsiPilot {
    if(existing&&b.retryPaymentId!==existing.id)fail('Обновите отменённую оплату перед повтором.');
    
    const r=this.cafe.order(b.id,u),c=this.connection.read();if(r.details.guestBillId)fail('Оплатите общий счёт гостя.');
-   if(!['admin','waiter'].includes(r.source)||!r.details.terminalPaymentRequired||r.details.complimentary||r.total_cents<=0||['DELIVERED','CANCELLED'].includes(r.status))fail('Этот заказ не ожидает оплаты на кассе.');
+   if(!['admin','waiter'].includes(r.source)||(!r.details.terminalPaymentRequired&&!(b.cash===true&&!this.enabled&&!r.details.terminalPaidAt&&!r.details.manualPaymentRequired))||r.details.complimentary||r.total_cents<=0||['DELIVERED','CANCELLED'].includes(r.status))fail('Этот заказ не ожидает оплаты на кассе.');
    if(r.revision!==b.revision)fail('Заказ изменился. Обновите карточку.');
    if(b.cash!==true&&(!c.apiKey||!c.deviceId))fail('Касса не подключена. Обратитесь к администратору.');
    if(b.cash!==true&&this.terminalBusy())fail(this.terminalBusyMessage());
@@ -106,7 +106,7 @@ export class AqsiCafe extends AqsiPilot {
    const at=current.slip?Date.parse(JSON.parse(current.slip).content.dateTime):Date.now();
    const paidAt=Number.isFinite(at)&&at>=row.created-300000&&at<=Date.now()+300000?at:Date.now();
    const pendingKitchen=details.pendingKitchen;details.pendingKitchen=false;details.terminalPaidAt=paidAt;details.paymentMethod=current.state==='cash_done'?'cash':'card';if(current.state==='cash_done'){details.manualCashReceipt=true;details.cashPaidAt=paidAt;}
-   const status=details.terminalQuickSale?'DELIVERED':'ACCEPTED';
+   const status=details.terminalQuickSale?'DELIVERED':['COOKING','READY'].includes(order.status)?order.status:'ACCEPTED';
    this.db.prepare('UPDATE cafe_orders SET status=?,details=?,updated=?,revision=revision+1 WHERE id=?').run(status,JSON.stringify(details),paidAt,order.id);
    this.cafe.event(order.id,'PAID',{id:row.actor},{terminalPaymentId:row.id},paidAt);
    if(pendingKitchen){const e=this.cafe.event(order.id,'NEW',{id:row.actor},{items:details.items,totalCents:row.amount,...(details.deliveryCents!==undefined?{deliveryCents:details.deliveryCents}:{})},paidAt);this.db.prepare('INSERT INTO cafe_notifications(event_id,due) VALUES(?,?)').run(e,paidAt);}

@@ -19,7 +19,7 @@ window.openCafeComposer=()=>loading||(loading=(async()=>{
   const contact=host.querySelector('#checkout-contact'),timing=form.elements.timing.closest('.cafe-form-grid'),comment=form.elements.comment.closest('label');
   extra.append(contact,timing,comment);form.querySelector('#checkout-summary').before(extra);
   host.querySelector('#clear-cart').textContent='Сбросить';host.querySelector('#clear-cart').setAttribute('aria-label','Сбросить заказ');
-  const script=document.createElement('script');script.src='/cafe.js?v=comments-20261004';
+  const script=document.createElement('script');script.src='/cafe.js?v=checkout-groups-20261004';
   await new Promise((resolve,reject)=>{script.onload=resolve;script.onerror=()=>reject(Error('Не удалось загрузить оформление заказа.'));document.head.append(script);});
   if(await window.cafeComposerReady===false)throw Error('Не удалось загрузить меню. Нажмите «Новый заказ», чтобы повторить.');
 
@@ -31,7 +31,17 @@ window.openCafeComposer=()=>loading||(loading=(async()=>{
   heading.append(cart.querySelector('.cart-reset-actions'));cart.querySelector('.cafe-close').after(heading);
   const scroll=document.createElement('div'),footer=document.createElement('div');scroll.className='cart-scroll';footer.className='cart-footer';
   const lines=host.querySelector('#cart-lines');scroll.append(lines,form);
-  for(const id of ['checkout-summary','checkout-error','checkout-button','prepare-order']){const control=scroll.querySelector('#'+id);if(control.tagName==='BUTTON')control.setAttribute('form','checkout');footer.append(control);}
+  const deliverGroup=document.createElement('section'),workGroup=document.createElement('section'),deliverRow=document.createElement('div'),workRow=document.createElement('div');
+  deliverGroup.className='checkout-group checkout-deliver';deliverGroup.setAttribute('role','group');deliverGroup.setAttribute('aria-label','Сразу выдать');
+  workGroup.className='checkout-group checkout-work';workGroup.setAttribute('role','group');workGroup.setAttribute('aria-label','В работу');
+  deliverRow.className=workRow.className='checkout-actions';
+  const deliverHeading=document.createElement('h3'),workHeading=document.createElement('h3');deliverHeading.textContent='Сразу выдать';workHeading.textContent='В работу';
+  deliverGroup.append(deliverHeading,deliverRow);workGroup.append(workHeading,workRow);
+  for(const id of ['checkout-summary','checkout-error'])footer.append(scroll.querySelector('#'+id));
+  footer.append(deliverGroup,workGroup);
+  const primaryAction=document.createElement('div');primaryAction.className='checkout-primary';footer.append(primaryAction);
+  const checkoutButton=scroll.querySelector('#checkout-button'),prepareButton=scroll.querySelector('#prepare-order');
+  for(const [button,row,label] of [[checkoutButton,deliverRow,'Картой, сразу выдать'],[prepareButton,workRow,'Картой, в работу']]){button.setAttribute('form','checkout');button.setAttribute('aria-label',label);row.append(button);}
   cart.append(scroll,footer);
 
   // The select remains the source of truth. Buttons only present its current options
@@ -125,19 +135,47 @@ window.openCafeComposer=()=>loading||(loading=(async()=>{
    new MutationObserver(updateEmployee).observe(reason,{attributes:true});updateEmployee();
   }
 
-  if(newOrder){const manual=document.createElement('button');manual.type='submit';manual.id='manual-register-order';manual.setAttribute('form','checkout');manual.textContent='Пробито на эквайринге вручную';footer.append(manual);const syncManual=()=>{manual.disabled=host.querySelector('#checkout-button').disabled;manual.hidden=!!form.elements.freeReason?.value||!!form.dataset.guestBill;};new MutationObserver(syncManual).observe(host.querySelector('#checkout-button'),{attributes:true});form.addEventListener('change',syncManual);syncManual();}
-  // Guest account actions can arrive after the composer loads. Move those same
-  // nodes into the footer and retain their association with the checkout form.
+  if(newOrder){
+   const manualRegister=document.createElement('button'),manualDeliver=document.createElement('button');
+   for(const button of [manualRegister,manualDeliver]){button.type='submit';button.classList.add('cafe-manual-action');button.setAttribute('form','checkout');}
+   manualRegister.id='manual-register-order';manualRegister.textContent='Эквайринг вручную';manualRegister.setAttribute('aria-label','Эквайринг вручную, в работу');
+   manualDeliver.id='manual-deliver-order';manualDeliver.textContent='Эквайринг вручную';manualDeliver.setAttribute('aria-label','Эквайринг вручную, сразу выдать');
+   workRow.append(manualRegister);deliverRow.append(manualDeliver);
+   const syncManual=()=>{
+    const unavailable=!!form.elements.freeReason?.value||!!form.dataset.guestBill;
+    manualRegister.disabled=checkoutButton.disabled;manualRegister.hidden=unavailable;
+    manualDeliver.disabled=checkoutButton.disabled||prepareButton.disabled;manualDeliver.hidden=unavailable||prepareButton.hidden;
+   };
+   const manualObserver=new MutationObserver(syncManual);manualObserver.observe(checkoutButton,{attributes:true});manualObserver.observe(prepareButton,{attributes:true});form.addEventListener('change',syncManual);syncManual();
+  }
+  // Guest account actions can arrive after the composer loads. Keep the original
+  // controls in their fulfillment rows and retain their checkout form association.
   function placeGuestActions(){
+   const setAttribute=(button,name,value)=>{if(button.getAttribute(name)!==value)button.setAttribute(name,value);};
    const context=form.querySelector('.guest-context');
    if(context&&context.parentNode!==footer)footer.append(context);
    for(const button of form.querySelectorAll(':scope>button')){
-    button.classList.add('cafe-guest-action');button.setAttribute('form','checkout');
-    if(button.textContent==='Получено наличными')button.classList.add('cafe-cash-action');
-    footer.append(button);
+    button.classList.add('cafe-guest-action');setAttribute(button,'form','checkout');
+    if(button.parentElement!==footer)footer.append(button);
    }
+   const checkout=form.querySelector('#checkout-button')||footer.querySelector('#checkout-button');
+   const semantic=/провер|бесплат|в сч[её]т|дозаказ|заказ №|повтор/i.test(checkout.textContent);
+   if(checkout){const outcome=prepareButton.hidden?'в работу':'сразу выдать';setAttribute(checkout,'aria-label',semantic?checkout.textContent+', '+outcome:'Картой, '+outcome);if(semantic){if(checkout.parentElement!==primaryAction)primaryAction.append(checkout);}else{const row=prepareButton.hidden?workRow:deliverRow;if(checkout.parentElement!==row)row.append(checkout);}}
+   for(const [selector,row,label,visible] of [['#cash-deliver-order',deliverRow,'Наличными, сразу выдать','Наличными'],['#manual-deliver-order',deliverRow,'Эквайринг вручную, сразу выдать','Эквайринг вручную'],['#prepare-order',workRow,/^В работу$/i.test(prepareButton.textContent)?'Без оплаты, в работу':'Картой, в работу',null],['#cash-prepare-order',workRow,'Наличными, в работу','Наличными'],['#manual-register-order',workRow,'Эквайринг вручную, в работу','Эквайринг вручную']]){
+    const button=form.querySelector(selector)||footer.querySelector(selector);if(button){setAttribute(button,'form','checkout');setAttribute(button,'aria-label',label);if(visible&&button.textContent!==visible)button.textContent=visible;if(button.parentElement!==row)row.append(button);}
+   }
+   const workCard=checkout.parentElement===workRow?checkout:prepareButton.hidden?null:prepareButton;
+   for(const [row,order] of [[deliverRow,[checkout,form.querySelector('#cash-deliver-order')||footer.querySelector('#cash-deliver-order'),form.querySelector('#manual-deliver-order')||footer.querySelector('#manual-deliver-order')]],[workRow,[workCard,form.querySelector('#cash-prepare-order')||footer.querySelector('#cash-prepare-order'),form.querySelector('#manual-register-order')||footer.querySelector('#manual-register-order')]]]){
+    const ordered=order.filter(button=>button?.parentElement===row);ordered.forEach((button,index)=>{if(row.children[index]!==button)row.insertBefore(button,row.children[index]||null);});
+   }
+   const cashDeliver=form.querySelector('#cash-deliver-order')||footer.querySelector('#cash-deliver-order'),cashWork=form.querySelector('#cash-prepare-order')||footer.querySelector('#cash-prepare-order');
+   if(cashDeliver)cashDeliver.disabled=checkoutButton.disabled;
+   if(cashWork)cashWork.disabled=prepareButton.hidden?checkoutButton.disabled:prepareButton.disabled;
+   deliverGroup.hidden=[...deliverRow.children].every(button=>button.hidden);
+   workGroup.hidden=[...workRow.children].every(button=>button.hidden);
+   primaryAction.hidden=!primaryAction.children.length||primaryAction.children[0].hidden;
   }
-  new MutationObserver(placeGuestActions).observe(form,{childList:true});placeGuestActions();
+  new MutationObserver(placeGuestActions).observe(form,{childList:true,subtree:true});new MutationObserver(placeGuestActions).observe(checkoutButton,{attributes:true,attributeFilter:['hidden','disabled'],childList:true,characterData:true,subtree:true});new MutationObserver(placeGuestActions).observe(prepareButton,{attributes:true,attributeFilter:['hidden','disabled']});placeGuestActions();
   // Size panels from their actual viewport position; embedded workspaces already
   // exclude the shared footer, while standalone pages expose its measured height.
   let fitFrame=0,menuLayoutDirty=true,categoryEntries=[];

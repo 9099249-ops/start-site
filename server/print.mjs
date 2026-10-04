@@ -49,14 +49,15 @@ export class PrintStore {
  }
  reportSnapshot(shiftId,now=Date.now()){
   const s=this.selectedShift(shiftId,now),calc=this.admin.workforce.calculate(s.day,now);
-  const employees=calc.employees.map(e=>{const paid=this.db.prepare('SELECT coalesce(sum(amount_cents),0) n FROM payroll_payments WHERE shift_id=? AND user_id=? AND paid_at<=?').get(s.id,e.user_id,now).n;const p=this.db.prepare('SELECT coalesce(p.display_name,u.login) name FROM admin_users u LEFT JOIN employee_profiles p ON p.user_id=u.id WHERE u.id=?').get(e.user_id);return {userId:e.user_id,name:label(p?.name||e.name,200),salaryCents:e.salary_cents,paidCents:paid,remainingCents:Math.max(0,e.salary_cents-paid-this.admin.refunds.closedAdjustment(s.id,e.user_id,now))};});
-  return {shiftId:s.id,date:s.day,preliminary:!s.closed_at,asOf:now,totalCents:s.closed_at?s.total_revenue_cents:calc.revenue.cents,source:s.closed_at?'Итог кассы: кафе + прокат':calc.revenue.source,employees};
+  const employees=calc.employees.map(e=>{const payment=this.admin.workforce.payroll.employee(s.id,e,now),p=this.db.prepare('SELECT coalesce(p.display_name,u.login) name FROM admin_users u LEFT JOIN employee_profiles p ON p.user_id=u.id WHERE u.id=?').get(e.user_id),origin=payment.origins.map(p=>p.day).join(', ');return {userId:e.user_id,name:label((p?.name||e.name)+(origin&&origin!==s.day?' · '+origin:''),200),salaryCents:e.salary_cents,paidCents:payment.paid,remainingCents:payment.remaining_cents,reviewRequired:payment.review_required,origins:payment.origins};});
+  return {shiftId:s.id,date:s.day,preliminary:!calc.final,asOf:now,totalCents:calc.revenue.cents,declaredCents:s.declared_revenue_cents,varianceCents:calc.revenue.variance_cents||0,source:calc.revenue.source+(employees.some(e=>e.reviewRequired)?'; ранее выплаченная зарплата требует сверки суммы, повторно не выдавать':''),employees};
  }
  reportInfo(u,shiftId,now=Date.now()){
   staff(u);const snapshot=this.reportSnapshot(shiftId,now),base=`shift:${snapshot.shiftId}:${snapshot.preliminary?'preliminary':'final'}`;
   const docs=this.db.prepare("SELECT d.id FROM print_documents d WHERE source_key LIKE ? ORDER BY created_at DESC,rowid DESC").all(base+':%');
   const reports=docs.map(d=>this.job(this.db.prepare('SELECT id FROM print_jobs WHERE document_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1').get(d.id).id));
-  return {snapshot,reports,device:this.device(now)};
+  const financial=s=>JSON.stringify([s.totalCents,s.employees.map(e=>[e.userId,e.salaryCents,e.paidCents,e.remainingCents,!!e.reviewRequired,e.origins||[]])]);
+  return {snapshot,reports,stale:!!reports[0]&&financial(reports[0].snapshot)!==financial(snapshot),device:this.device(now)};
  }
  report(b,u,now=Date.now()){
   staff(u);if(!this.enabled())fail('Подключение печати ещё не включено.',503);

@@ -118,4 +118,12 @@ class Tests(unittest.TestCase):
         self.assertIn('КОМУ СКОЛЬКО ПЕРЕВЕСТИ:',main.receipt_lines(data,main.now()))
         self.assertGreater(len(main.render(data,main.now(),self.cfg)),1000)
 
+    def test_report_preserves_payroll_review_warning(self):
+        report=json.loads((Path(__file__).parent/'examples/shift-report.json').read_text(encoding='utf-8'))
+        report['source']='Ранее выплаченная зарплата требует сверки суммы, повторно не выдавать'
+        _,_,data=main.validate(report)
+        lines=main.receipt_lines(data,main.now())
+        self.assertIn(report['source'],lines)
+        self.assertNotIn('Только за эту смену; выплаты учтены.',lines)
+
 if __name__ == '__main__': unittest.main(verbosity=2)

@@ -7,6 +7,7 @@ import {CafeStore} from './cafe.mjs';
 import {AqsiPilot} from './aqsi-pilot.mjs';
 import {AqsiCafe} from './aqsi-cafe.mjs';
 import {CafeBoard} from './cafe-board.mjs';
+import {cafeListRow} from './cafe-list.mjs';
 import {fillTestCafeStock} from './testing/cafe-stock-fixture.mjs';
 const u={id:1,role:'admin'},staff={id:2,role:'staff'},waiter={id:3,role:'waiter'};
 function fixture(){
@@ -21,6 +22,57 @@ function fixture(){
  return {a,c,p,connection,calls,answers,body,order};
 }
 async function paid(f,r){const paymentId=randomUUID(),receiptOp=randomUUID();f.answers.push({operationId:paymentId});await f.p.begin({id:r.id,revision:r.revision},staff);f.answers.push({operationId:paymentId,deviceId:709740,type:'acquiring.purchase',status:'Completed',result:JSON.stringify({id:paymentId,device:{id:709740},content:{type:'purchase',amount:r.totalCents,responseCode:'000',dateTime:new Date().toISOString(),sequenceNumber:'123'}})},{operationId:receiptOp});await f.p.tick();return receiptOp;}
+
+for(const quickSale of [false,true])test('Manual acquiring mode records card once without terminal calls, quick='+quickSale,()=>{
+ const f=fixture();try{
+  f.p.enabled=false;const r=f.c.create({...f.body(),manualPaidRequested:true,quickSale},staff);
+  assert.equal(r.status,'NEW');assert.equal(r.details.terminalPaymentRequired,true);
+  const b={id:r.id,revision:r.revision,paymentId:null,method:'card',note:'Сотрудник подтвердил оплату и чек.',confirmed:true,terminalIdle:true,receiptExists:true};
+  f.p.manualPaid(b,staff);f.p.manualPaid(b,staff);
+  const result=f.c.order(r.id,staff);assert.equal(result.status,quickSale?'DELIVERED':'ACCEPTED');assert.equal(result.details.paymentMethod,'card');assert.ok(result.details.terminalPaidAt);assert.equal(f.calls.length,0);
+ }finally{f.a.close();}
+});
+test('Settled cash cancellation points to refund, stays blocked after partial refund, and permits full refunded cancellation',async()=>{
+ const f=fixture();try{
+  const body={...f.body(),quickSale:false,items:f.body().items.map(line=>({...line,quantity:2})),expectedTotalCents:f.body().expectedTotalCents*2};
+  const r=f.c.create(body,staff);await f.p.begin({id:r.id,revision:r.revision,cash:true},staff);
+  const cancel=()=>f.c.status({id:r.id,revision:f.c.order(r.id,staff).revision,status:'CANCELLED',prepared:false},staff);
+  assert.throws(cancel,/Заказ оплачен.*возврат/);
+  for(let i=0;i<2;i++){
+   f.a.refunds.create({requestId:randomUUID(),kind:'cafe',id:r.id,amountCents:r.totalCents/2,lines:[{index:0,quantity:1}],reason:'Возврат гостю',method:'cash'},staff);
+   if(i===0)assert.throws(cancel,/возврат/);
+  }
+  assert.equal(cancel().status,'CANCELLED');assert.equal(f.calls.length,0);
+ }finally{f.a.close();}
+});
+
+test('Cash preparation without acquiring uses the existing paid ledger once and stays active',async()=>{
+ const f=fixture();try{
+  f.p.enabled=false;const b={...f.body(),quickSale:false,cashRequested:true},r=f.c.create(b,staff);
+  assert.equal(r.details.terminalPaymentRequired,true);assert.equal(r.details.pendingKitchen,true);
+  const used=f.a.db.prepare('SELECT * FROM cafe_stock_usage WHERE order_id=?').all(r.id);
+  await f.p.begin({id:r.id,revision:r.revision,cash:true},staff);
+  const paid=f.c.order(r.id,staff);assert.equal(paid.status,'ACCEPTED');assert.ok(paid.details.terminalPaidAt);assert.equal(paid.details.cashPaidAt,paid.details.terminalPaidAt);assert.equal(paid.details.paymentMethod,'cash');
+  assert.equal(cafeListRow(paid,paid.terminalPayment).paymentLabel,'Оплачено');assert.equal(cafeListRow(paid,paid.terminalPayment).tone,'green');
+  await f.p.begin({id:r.id,revision:r.revision,cash:true},waiter);assert.equal(f.c.create(b,staff).id,r.id);
+  assert.equal(f.a.db.prepare("SELECT count(*) n FROM cafe_order_events WHERE order_id=? AND kind='PAID'").get(r.id).n,1);
+  assert.deepEqual(f.a.db.prepare('SELECT * FROM cafe_stock_usage WHERE order_id=?').all(r.id),used);
+  const sales=f.a.workforce.sales(new Date(Date.now()+10800000).toISOString().slice(0,10),Date.now()).filter(x=>x.id==='cafe-'+r.id);assert.equal(sales.length,1);assert.equal(sales[0].cents,r.totalCents);
+  assert.equal(f.a.db.prepare('SELECT count(*) n FROM cafe_notifications WHERE event_id IN (SELECT id FROM cafe_order_events WHERE order_id=?)').get(r.id).n,1);
+  assert.equal(f.calls.length,0);
+ }finally{f.a.close();}
+});
+for(const status of ['NEW','COOKING','READY'])test('Existing non-terminal '+status+' order accepts cash without losing preparation',async()=>{
+ const f=fixture();try{
+  f.p.enabled=false;const r=f.c.create({...f.body(),quickSale:false},staff);
+  if(status!=='NEW')f.c.status({id:r.id,revision:r.revision,status},staff);
+  const before=f.c.order(r.id,staff);
+  await assert.rejects(f.p.begin({id:r.id,revision:before.revision,cash:false},staff),/не ожидает/);
+  await assert.rejects(f.p.begin({id:r.id,revision:before.revision+1,cash:true},staff),/Заказ изменился/);
+  await f.p.begin({id:r.id,revision:before.revision,cash:true},staff);
+  const paid=f.c.order(r.id,staff);assert.equal(paid.status,status==='NEW'?'ACCEPTED':status);assert.ok(paid.details.terminalPaidAt);assert.equal(cafeListRow(paid,paid.terminalPayment).paymentLabel,'Оплачено');assert.equal(f.calls.length,0);
+ }finally{f.a.close();}
+});
 test('Website orders print immediately and complete without an API payment; stale unused flags are repaired',async()=>{
  const f=fixture();try{
   const printed=[];f.a.printStore={cafeEvent:id=>printed.push(id)};

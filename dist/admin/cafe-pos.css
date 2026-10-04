@@ -107,14 +107,36 @@ body.cafe-integrated #compose .menu-cat{scroll-margin-top:calc(var(--desk-chrome
 }
 @media(min-width:1280px){body.cafe-integrated #compose #menu-list{grid-template-columns:repeat(4,minmax(0,1fr))}}
 
-/* Keep the two existing payment actions side by side. */
+/* Immediate handoff, kitchen orders, manual payment, then guest account. */
 body.cafe-integrated #cart-dialog .cart-footer #checkout-button,
 body.cafe-integrated #cart-dialog .cart-footer #prepare-order{order:0;min-height:48px!important;padding:10px 6px;background:var(--accent);border-color:var(--accent);color:#fff;font-size:14px!important;font-weight:700;white-space:normal}
+body.cafe-integrated #cart-dialog .cart-footer #cash-deliver-order,
+body.cafe-integrated #cart-dialog .cart-footer #cash-prepare-order{min-height:48px!important;padding:10px 6px;background:var(--accent);border-color:var(--accent);color:#fff;font-size:14px!important;font-weight:700;white-space:normal}
 body.cafe-integrated #cart-dialog .cart-footer #checkout-button{grid-column:1}
-body.cafe-integrated #cart-dialog .cart-footer #prepare-order{grid-column:2}
+body.cafe-integrated #cart-dialog .cart-footer #prepare-order{order:1;grid-column:1}
 body.cafe-integrated #cart-dialog .cart-footer:has(#prepare-order[hidden]) #checkout-button{grid-column:1/-1}
-body.cafe-integrated #cart-dialog .cart-footer #manual-register-order{order:1;grid-column:1/-1}
-body.cafe-integrated #cart-dialog .cart-footer .cafe-cash-action{order:2;grid-column:1/-1}
-body.cafe-integrated #cart-dialog .cart-footer:has(#prepare-order:not([hidden])) .cafe-cash-action{grid-column:auto}
+body.cafe-integrated #cart-dialog .cart-footer #cash-deliver-order{order:0;grid-column:2}
+body.cafe-integrated #cart-dialog .cart-footer #cash-prepare-order{order:1;grid-column:2}
+body.cafe-integrated #cart-dialog .cart-footer .cafe-manual-action{min-height:48px!important;padding:10px 6px;background:var(--accent);border-color:var(--accent);color:#fff;font-size:14px!important;font-weight:700;white-space:normal}
+body.cafe-integrated #cart-dialog .cart-footer #manual-register-order{order:2;grid-column:1}
+body.cafe-integrated #cart-dialog .cart-footer #manual-deliver-order{order:2;grid-column:2}
+body.cafe-integrated #cart-dialog .cart-footer [data-guest-select]{order:3;grid-column:1/-1}
+body.cafe-integrated #cart-dialog .cart-footer:has(#prepare-order[hidden]):has(#cash-prepare-order:not([hidden])) #checkout-button{order:1;grid-column:1}
+
+body.cafe-integrated #cart-dialog .cart-footer{grid-template-columns:minmax(0,1fr);gap:8px}
+body.cafe-integrated #cart-dialog .cart-footer .checkout-group{min-width:0;padding:7px;border:1px solid var(--line);border-radius:5px}
+body.cafe-integrated #cart-dialog .cart-footer .checkout-deliver{background:#fbf3f5;border-color:#d9bac3}
+body.cafe-integrated #cart-dialog .cart-footer .checkout-work{background:#f1f7f3;border-color:#bfd2c4}
+body.cafe-integrated #cart-dialog .cart-footer .checkout-group h3{grid-column:1/-1;margin:0 0 5px;font-size:13px;line-height:1.25;font-weight:700;color:var(--ink)}
+body.cafe-integrated #cart-dialog .cart-footer .checkout-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;min-width:0}
+body.cafe-integrated #cart-dialog .cart-footer .checkout-actions button{grid-column:auto!important;order:initial!important;display:block;width:100%;min-width:0;min-height:46px!important;padding:6px 4px;border:1px solid #852a44!important;border-radius:4px;background:#852a44!important;color:#fff!important;font-size:13px!important;line-height:1.2;font-weight:650;white-space:normal;overflow-wrap:anywhere}
+body.cafe-integrated #cart-dialog .cart-footer .checkout-work .checkout-actions button{border-color:#416b52!important;background:#416b52!important}
+body.cafe-integrated #cart-dialog .cart-footer .checkout-actions button[hidden]{display:none!important}
+body.cafe-integrated #cart-dialog .cart-footer .checkout-actions button:disabled{border-color:#c9cdd0!important;background:#e4e6e7!important;color:#777e83!important;opacity:1}
+body.cafe-integrated #cart-dialog .cart-footer .checkout-primary{grid-column:1/-1;min-width:0}
+body.cafe-integrated #cart-dialog .cart-footer .checkout-primary button{width:100%;min-height:48px!important;padding:9px 8px;border:1px solid var(--line);border-radius:4px;background:#f2f3f3;color:var(--ink);font-size:15px!important;font-weight:700;white-space:normal;overflow-wrap:anywhere}
+body.cafe-integrated #cart-dialog .cart-footer .checkout-primary button:disabled{background:#e4e6e7;color:#777e83}
+body.cafe-integrated #cart-dialog .cart-footer .cafe-guest-action:not([data-guest-select]){grid-column:1/-1;width:100%;min-width:0;min-height:46px!important;padding:8px;border:1px solid var(--line);border-radius:4px;background:#f3f4f4;color:var(--ink);font-size:14px!important;white-space:normal;overflow-wrap:anywhere}
+body.cafe-integrated #cart-dialog .cart-footer .checkout-group[hidden],body.cafe-integrated #cart-dialog .cart-footer .checkout-primary[hidden]{display:none}
 
 .cafe-integrated #cart-dialog .cart-comment{grid-column:1/-1;justify-self:start;min-height:32px!important;padding:4px 8px;font-size:13px;border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--accent)}

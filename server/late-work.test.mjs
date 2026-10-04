@@ -27,7 +27,7 @@ test('Late coffee work: no cash reopening, no second fixed rate, immutable repor
  session=start('2026-09-28T09:00');sale('2026-09-28T09:30','1000');end(session,'2026-09-28T10:00');
  const second=a.openShift({day:'2026-09-28',cashStartCents:130000},u,at('2026-09-28T09:00'));
  const body={shiftId:second,cashEndCents:230000,cashlessCents:0};c=w.preview(body,u,at('2026-09-28T10:01')).calculation;
- assert.equal(c.revenue.after_close_cents,30000);assert.equal(c.revenue.cents,130000);assert.equal(c.revenue.cash_adjustment_cents,0);assert.equal(c.employees[0].salary_cents,20833+5000+4972);
+ assert.equal(c.revenue.after_close_cents,0);assert.equal(c.revenue.carried_revenue_cents,30000);assert.equal(c.revenue.cents,100000);assert.equal(c.revenue.cash_adjustment_cents,0);assert.equal(c.employees[0].salary_cents,20833+5000+4972);
  a.closeShift(body,u,at('2026-09-28T10:01'));
  assert.equal(JSON.stringify(a.shiftDetails(id)),frozen);
  assert.equal(w.settlement('2026-09-29',at('2026-09-29T10:00'),0).revenue.after_close_cents,0);

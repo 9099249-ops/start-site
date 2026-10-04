@@ -68,11 +68,13 @@ export class AdminStore{
  manualSale(b,u,now=Date.now()){
   if(!['admin','staff','waiter'].includes(u?.role))fail('Войдите в админку.',401);
   if(!/^[a-f0-9-]{36}$/.test(b.requestId||'')||!line(b.title,120)||!Number.isSafeInteger(b.quantity)||b.quantity<1||b.quantity>1000||!Number.isSafeInteger(b.unitCents)||b.unitCents<1||b.unitCents*b.quantity>100000000)fail('Укажите название, количество и цену больше нуля.');
-  const details=JSON.stringify({title:b.title.trim(),quantity:b.quantity,unitCents:b.unitCents});
-  return this.workforce.tx(()=>{const old=this.db.prepare('SELECT id,custom_json FROM rentals WHERE request_id=?').get(b.requestId);if(old){if(old.custom_json!==details)fail('Запрос уже использован. Проверьте историю продаж.',409);return {id:old.id,duplicate:true};}
+  const terminal=!!(this.rentalTerminal?.enabled&&u.role!=='waiter');
+  const details=JSON.stringify({title:b.title.trim(),quantity:b.quantity,unitCents:b.unitCents,...(!terminal?{method:b.method}:{})});
+  return this.workforce.tx(()=>{const old=this.db.prepare('SELECT id,custom_json FROM rentals WHERE request_id=?').get(b.requestId);if(old){const saved=JSON.parse(old.custom_json||'null');if(!saved||saved.title!==b.title.trim()||saved.quantity!==b.quantity||saved.unitCents!==b.unitCents||saved.method!==undefined&&saved.method!==b.method)fail('Запрос уже использован. Проверьте историю продаж.',409);return {id:old.id,duplicate:true};}
+   if(!terminal&&!['cash','card'].includes(b.method))fail('Выберите способ полученной оплаты: наличные или карта.');
    this.workforce.requireOnDuty(now,u);const local=new Date(now+10800000).toISOString().slice(0,16);
    const id=Number(this.db.prepare("INSERT INTO rentals(request_id,equipment,quantity,name,phone,departed,created,created_by,returned,returned_by,expected_return,custom_json) VALUES(?,'manual',?,'Без клиента','',?,?,?,?,?,?,?)").run(b.requestId,b.quantity,local,now,u.id,now,u.id,now,details).lastInsertRowid);
-   if(this.rentalTerminal?.enabled&&u.role!=='waiter')this.db.prepare('UPDATE rentals SET initial_due=? WHERE id=?').run(b.quantity*b.unitCents,id);else this.db.prepare('INSERT INTO payments(rental_id,amount,method,day,created,user_id,note) VALUES(?,?,?,?,?,?,?)').run(id,b.quantity*b.unitCents,'unspecified',moscowDay(now),now,u.id,'Свободная цена: '+b.title.trim());
+   if(terminal)this.db.prepare('UPDATE rentals SET initial_due=? WHERE id=?').run(b.quantity*b.unitCents,id);else this.db.prepare('INSERT INTO payments(rental_id,amount,method,day,created,user_id,note) VALUES(?,?,?,?,?,?,?)').run(id,b.quantity*b.unitCents,b.method,this.workforce.accountingDay(now),now,u.id,'Свободная цена: '+b.title.trim());
    this.workforce.audit(u,'manual_sale',id,null,{...JSON.parse(details),totalCents:b.quantity*b.unitCents},'Продажа со свободной ценой',now);return {id};
   });
  }
@@ -154,6 +156,7 @@ export class AdminStore{
    if(row.returned===null){const used=this.db.prepare('SELECT coalesce(sum(quantity),0) n FROM rentals WHERE equipment=? AND returned IS NULL AND id<>?').get(b.equipment,b.id).n;if(used+b.quantity>item[2])fail('Недостаточно свободной техники.',409);}
    if(row.returned===null)assertCapacity(this.db,fleet,{equipment:b.equipment,quantity:b.quantity,start:departure,end:Math.max(row.expected_return||departure+3600000,now+1)},{ignoreRental:row.id,now,close:this.sms?.content?.live().close});
    const p=payments[0],before={equipment:row.equipment,quantity:row.quantity,name:row.name,phone:row.phone,departed:row.departed,amount:p.amount,method:p.method},after={equipment:b.equipment,quantity:b.quantity,name:b.name.trim(),phone:b.phone.trim(),departed:b.departed,amount:paid,method:b.method};
+   if((p.amount!==paid||p.method!==b.method)&&this.currentShift(this.workforce.accountingDay(p.created))?.closed_at)fail('Этот платёж уже вошёл в сохранённый итог дня. Используйте возврат или отдельную корректировку, не переписывайте оплату.',409);
    if(JSON.stringify(before)===JSON.stringify(after))fail('Изменений нет.');
    this.db.prepare('UPDATE rentals SET equipment=?,quantity=?,name=?,phone=?,departed=?,revision=revision+1 WHERE id=?').run(after.equipment,after.quantity,after.name,after.phone,after.departed,b.id);
    this.db.prepare('UPDATE payments SET amount=?,method=? WHERE id=?').run(paid,b.method,p.id);
@@ -166,7 +169,7 @@ export class AdminStore{
   const reserved=this.db.prepare(sql+' WHERE r.returned IS NULL ORDER BY r.departed').all();const active=reserved.filter(r=>r.initial_due===0);const pendingRentals=this.db.prepare(sql+' WHERE r.initial_due>0 ORDER BY r.id').all();
   const returned=this.db.prepare(sql+" WHERE r.returned IS NOT NULL AND date(r.returned/1000,'unixepoch','+3 hours')=? ORDER BY r.returned DESC").all(day);
   const dayRentals=this.db.prepare(sql+" WHERE substr(r.departed,1,10)<=? AND (r.returned IS NULL OR date(r.returned/1000,'unixepoch','+3 hours')>=?) ORDER BY r.departed DESC,r.id DESC").all(day,day);
-  const totals=this.db.prepare('SELECT method,sum(amount) amount FROM payments WHERE day=? GROUP BY method').all(day);
+  const [financeStart,financeEnd]=this.workforce.accountingBounds(day);const totals=this.db.prepare('SELECT method,sum(amount) amount FROM payments WHERE created>=? AND created<? GROUP BY method').all(financeStart,financeEnd);
   const refundsCents=this.refunds.total(day,Date.now(),'rental');return {user,day,refundsCents,now:Date.now(),nearby:nearbyBookings(this),active,pendingRentals,rentalPayments:this.rentalTerminal?.list()||[],returned,dayRentals,totals,fleet:orderedFleet(this,fleet).map(([id,label,total])=>({id,label,total,price:rates.find(i=>i.id===id)?.price??null,available:total-reserved.filter(r=>r.equipment===id).reduce((n,r)=>n+r.quantity,0)}))};
  }
  shiftSettings(user){if(user.role!=='admin')fail('Только администратор.',403);return this.db.prepare('SELECT * FROM salary_settings WHERE id=1').get();}
@@ -177,9 +180,9 @@ export class AdminStore{
  addWithdrawal(b,user,now=Date.now(),{allowClosed=false}={}){if(!Number.isSafeInteger(b.shiftId)||!Number.isInteger(b.amountCents)||b.amountCents<=0||b.amountCents>100000000)fail('Проверьте сумму изъятия.');const s=this.db.prepare('SELECT * FROM shifts WHERE id=?').get(b.shiftId);if(!s||s.closed_at&&!allowClosed)fail('Смена закрыта или не найдена.',409);this.db.prepare("INSERT INTO cash_movements(shift_id,type,amount_cents,comment,created_at,created_by) VALUES(?,?,?,?,?,?)").run(s.id,'DIRECTOR_WITHDRAWAL',b.amountCents,line(b.comment||'',300)?b.comment:'',now,user.id);this.audit(user,'director_withdrawal',s.id);return this.shiftMovements(s.id);}
  closeShift(b,user,now=Date.now()){return this.workforce.closeCashShift(b,user,now);}
  shiftDetails(id){const s=this.db.prepare('SELECT * FROM shifts WHERE id=?').get(id);return {...s,withdrawals:this.shiftMovements(id),employees:this.db.prepare('SELECT e.*,u.login FROM shift_employees e JOIN admin_users u ON u.id=e.user_id WHERE e.shift_id=?').all(id)};}
- shiftTelegram(d){return ['СТАРТ — смена закрыта',`Дата: ${d.day}`,...(d.declared_revenue_cents===null||d.declared_revenue_cents===undefined?[`Наличные: ${(d.cash_revenue_cents/100).toFixed(2)} ₽`,`Безнал: ${(d.cashless_cents/100).toFixed(2)} ₽`]:[]),`Общая выручка: ${(d.total_revenue_cents/100).toFixed(2)} ₽`,'','К выплате:',...d.employees.map(e=>`${e.login} — ${(e.salary_cents/100).toFixed(2)} ₽`)].join('\n');}
+ shiftTelegram(d){return ['СТАРТ: итог дня сохранён',`Дата: ${d.day}`,...(d.cash_end_cents===null||d.cash_end_cents===undefined?[]:[`Наличные по пересчёту: ${(d.cash_end_cents/100).toFixed(2)} ₽`,`Безнал за вычетом возвратов: ${(d.cashless_cents/100).toFixed(2)} ₽`]),`Зарегистрированная выручка: ${(d.total_revenue_cents/100).toFixed(2)} ₽`].join('\n');}
  shifts(){return this.db.prepare('SELECT * FROM shifts ORDER BY day DESC LIMIT 100').all().map(s=>this.shiftDetails(s.id));}
- payroll(user){if(user.role!=='admin')fail('Только администратор.',403);return this.db.prepare("SELECT e.shift_id,e.user_id,e.salary_cents,e.login,s.day,coalesce((SELECT sum(p.amount_cents) FROM payroll_payments p WHERE p.shift_id=e.shift_id AND p.user_id=e.user_id),0) paid FROM (SELECT se.*,u.login FROM shift_employees se JOIN admin_users u ON u.id=se.user_id) e JOIN shifts s ON s.id=e.shift_id WHERE s.closed_at IS NOT NULL ORDER BY s.day DESC,e.login").all().map(x=>({...x,refund_adjustment_cents:this.refunds.closedAdjustment(x.shift_id,x.user_id),overpaid_cents:Math.max(0,x.paid-x.salary_cents+this.refunds.closedAdjustment(x.shift_id,x.user_id)),remaining_cents:Math.max(0,x.salary_cents-x.paid-this.refunds.closedAdjustment(x.shift_id,x.user_id))}));}
+ payroll(user){return this.workforce.payroll.list(user);}
  telegramSettings(user){if(user.role!=='admin')fail('Только администратор.',403);const s=this.db.prepare('SELECT enabled,owner_chat_id FROM telegram_settings WHERE id=1').get();return {enabled:Boolean(s.enabled),configured:Boolean(this.env.TELEGRAM_BOT_TOKEN&&(s.owner_chat_id||this.env.TELEGRAM_OWNER_CHAT_ID||this.env.TELEGRAM_CHAT_ID)),ownerChatId:s.owner_chat_id||this.env.TELEGRAM_OWNER_CHAT_ID||this.env.TELEGRAM_CHAT_ID||''};}
  saveTelegramSettings(b,user){if(user.role!=='admin')fail('Только администратор.',403);if(typeof b.enabled!=='boolean'||(b.ownerChatId!==undefined&&!/^[-]?\d*$/.test(String(b.ownerChatId))))fail('Проверьте настройки Telegram.');this.db.prepare('UPDATE telegram_settings SET enabled=?,owner_chat_id=? WHERE id=1').run(b.enabled?1:0,String(b.ownerChatId||''));this.audit(user,'telegram_settings');return this.telegramSettings(user);}
  pay(b,user,now=Date.now()){return this.workforce.pay(b,user,now);}
@@ -222,7 +225,7 @@ export function adminHandler(store,origin){return async(req,res,url)=>{
   if(url.pathname==='/api/admin/tasks/complete'&&req.method==='POST')return reply(200,store.tasks.complete(b,user));
   if(url.pathname==='/api/admin/manual-sale'&&req.method==='POST')return reply(200,store.manualSale(b,user));
   if(url.pathname==='/api/admin/refunds'&&req.method==='GET')return reply(200,store.refunds.info(url.searchParams.get('kind'),Number(url.searchParams.get('id')),user));
-  if(url.pathname==='/api/admin/refunds'&&req.method==='POST')return reply(200,store.refunds.create(b,user));
+  if(url.pathname==='/api/admin/refunds'&&req.method==='POST'){if(!['cash','card'].includes(b.method))fail('Укажите способ возврата денег.');return reply(200,store.refunds.create(b,user));}
   if(req.method==='POST'&&url.pathname==='/api/admin/rental-reconcile'){if(!store.rentalTerminal)fail('Касса не подключена.',503);return reply(200,store.rentalTerminal.reconcile(b,user));}
   if(req.method==='POST'&&url.pathname==='/api/admin/rental-pay'){if(!store.rentalTerminal)fail('Касса не подключена.',503);return reply(200,await store.rentalTerminal.begin(b,user));}
   if(req.method==='POST'&&url.pathname==='/api/admin/rental-cancel-pending')return reply(200,store.rentalTerminal.cancel(b,user));
@@ -243,7 +246,8 @@ export function adminHandler(store,origin){return async(req,res,url)=>{
   if(req.method==='POST'&&url.pathname==='/api/admin/shift/withdrawal')return reply(200,{ok:true,items:store.addWithdrawal(b,user)});
   if(req.method==='POST'&&url.pathname==='/api/admin/shift/close'){const result=store.closeShift(b,user);void store.workforce.tick().catch(()=>console.error('Workforce report worker failed'));return reply(200,result);}
   if(req.method==='POST'&&url.pathname==='/api/admin/shift-settings')return reply(200,store.saveShiftSettings(b,user));
-  if(req.method==='POST'&&url.pathname==='/api/admin/payroll/pay')return reply(200,{items:store.pay(b,user)});
+  if(req.method==='POST'&&url.pathname==='/api/admin/payroll/pay'){if(!['cash','card','external'].includes(b.method)||!/^[a-f0-9-]{36}$/.test(b.requestId||''))fail('Выберите способ выплаты и обновите форму.');return reply(200,{items:store.pay(b,user)});}
+  if(req.method==='POST'&&url.pathname==='/api/admin/payroll/report-paid')return reply(200,{items:store.workforce.payroll.reportPaid(b,user)});
   if(req.method==='POST'&&url.pathname==='/api/admin/telegram-settings')return reply(200,store.saveTelegramSettings(b,user));
   if(req.method==='GET'&&url.pathname==='/api/admin/history')return reply(200,{changes:store.history(Number(url.searchParams.get('id')),user)});
   if(req.method==='POST'&&url.pathname==='/api/admin/edit'){store.edit(b,user);return reply(200,{ok:true});}

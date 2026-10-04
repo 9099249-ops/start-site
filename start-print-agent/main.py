@@ -179,9 +179,11 @@ def receipt_lines(data, received, reprint=False):
         if not data['transfers']:
             lines += ['Переводов нет']
         lines += ['Всего к выплате: ' + money(sum(Decimal(r['amount']) for r in data['transfers'])) + ' ₽',
-                  'Только за эту смену; выплаты учтены.']
+                  'Даты перенесённых начислений указаны у сотрудника.']
+        if data.get('source'):
+            lines += [data['source']]
         if data.get('preliminary'):
-            lines += ['Предварительно, до сверки кассы.']
+            lines += ['Предварительно, до сохранения итога.']
         if data.get('as_of'):
             stamp = datetime.fromisoformat(data['as_of'].replace('Z', '+00:00')).astimezone(ZoneInfo('Europe/Moscow'))
             lines += ['Снимок: ' + stamp.strftime('%d.%m.%Y %H:%M') + ' МСК']

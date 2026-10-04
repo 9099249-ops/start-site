@@ -1,5 +1,5 @@
 import {readFileSync} from 'node:fs';
-import {InventoryStore,quantity} from './inventory.mjs';
+import {InventoryStore,quantity,quantityText} from './inventory.mjs';
 const fail=(message,status=409,extra={})=>{throw Object.assign(new Error(message),{status,...extra});};
 export class CafeStock{
  constructor(cafe){this.cafe=cafe;this.db=cafe.db;this.inventory=new InventoryStore(cafe.admin);this.db.exec(readFileSync(new URL('./migrations/003-cafe-stock.sql',import.meta.url),'utf8'));}
@@ -34,10 +34,28 @@ export class CafeStock{
  for(const [id,r] of total){const stock=this.inventory.row(id);if(!stock.active||stock.current_milli===null||stock.unit_id!==r.unitId)fail(`«${stock.name}»: фактический остаток или единица не заполнены.`,409,{stockCode:'UNCONFIGURED',available:0,itemId:r.lines[0].line.itemId});if(stock.current_milli<r.amount){const l=r.lines[0].line,own=r.lines.filter(x=>x.line===l).reduce((n,x)=>n+x.perUnit,0),others=r.amount-own*l.quantity,available=Math.max(0,Math.floor((stock.current_milli-others)/own));fail(`«${l.name}»: доступно ${available} шт. Уменьшите количество в корзине.`,409,{stockCode:'INSUFFICIENT',available,itemId:l.itemId});}}
  return total;}
  consume(orderId,lines,u,now){const need=this.check(lines);for(const [id,r] of need){const before=this.inventory.row(id);const result=this.db.prepare('UPDATE inventory_items SET current_milli=current_milli-?,updated_at=?,updated_by=?,revision=revision+1 WHERE id=? AND current_milli>=?').run(r.amount,now,u?.id??null,id,r.amount);if(!result.changes)fail('Остаток изменился. Проверьте заказ.');this.db.prepare('INSERT INTO cafe_stock_usage(order_id,item_id,unit_id,amount_milli,created_at) VALUES(?,?,?,?,?)').run(orderId,id,r.unitId,r.amount,now);this.inventory.event(u||{login:'Заказ кафе'},'SALE',before,this.inventory.row(id),'Заказ кафе №'+orderId,null,null,now);}}
+ prepared(order){return order.events.some(e=>['COOKING','READY','DELIVERED'].includes(e.kind));}
+ summary(orderId){
+  const items=this.db.prepare(`SELECT s.item_id itemId,s.unit_id unitId,i.name,u.name unit,sum(s.amount_milli) usedMilli,
+   sum(CASE WHEN s.restored_at IS NOT NULL THEN s.amount_milli ELSE 0 END) restoredMilli,
+   sum(CASE WHEN s.restored_at IS NULL THEN s.amount_milli ELSE 0 END) retainedMilli
+   FROM cafe_stock_usage s JOIN inventory_items i ON i.id=s.item_id JOIN inventory_units u ON u.id=s.unit_id
+   WHERE s.order_id=? GROUP BY s.item_id,s.unit_id ORDER BY i.name,s.unit_id`).all(orderId)
+   .map(i=>({...i,restored:quantityText(i.restoredMilli),retained:quantityText(i.retainedMilli)}));
+  const restored=items.some(i=>i.restoredMilli>0),retained=items.some(i=>i.retainedMilli>0);
+  return {state:retained?(restored?'mixed':'retained'):restored?'restored':'none',items};
+ }
+ cancellationReport(start,end){
+  const where="o.status='CANCELLED' AND s.restored_at IS NULL AND EXISTS(SELECT 1 FROM cafe_order_events e WHERE e.order_id=o.id AND e.kind='CANCELLED' AND e.created>=? AND e.created<?)";
+  const from=' FROM cafe_stock_usage s JOIN cafe_orders o ON o.id=s.order_id';
+  const count=this.db.prepare('SELECT count(DISTINCT o.id) n'+from+' WHERE '+where).get(start,end).n;
+  const items=this.db.prepare('SELECT s.item_id itemId,s.unit_id unitId,i.name,u.name unit,sum(s.amount_milli) retainedMilli'+from+' JOIN inventory_items i ON i.id=s.item_id JOIN inventory_units u ON u.id=s.unit_id WHERE '+where+' GROUP BY s.item_id,s.unit_id ORDER BY i.name,s.unit_id').all(start,end).map(i=>({...i,retained:quantityText(i.retainedMilli)}));
+  return {count,items};
+ }
  cancel(order,u,now){
  // Food already in preparation stays consumed. The cancellation and usage remain in history.
- const prepared=order.events.some(e=>['COOKING','READY','DELIVERED'].includes(e.kind));if(prepared)return {restored:false,reason:'Заказ уже готовился; расход сохранён.'};
- for(const usage of this.db.prepare('SELECT * FROM cafe_stock_usage WHERE order_id=? AND restored_at IS NULL').all(order.id)){const before=this.inventory.row(usage.item_id);if(before.unit_id!==usage.unit_id||before.current_milli===null)fail('Перед отменой восстановите единицу и фактический остаток «'+before.name+'».');if(before.current_milli+usage.amount_milli>999999999999)fail('Остаток превышает допустимый предел.');this.db.prepare('UPDATE inventory_items SET current_milli=current_milli+?,updated_at=?,updated_by=?,revision=revision+1 WHERE id=?').run(usage.amount_milli,now,u.id,usage.item_id);this.db.prepare('UPDATE cafe_stock_usage SET restored_at=? WHERE id=?').run(now,usage.id);this.inventory.event(u,'RETURN',before,this.inventory.row(usage.item_id),'Отмена заказа кафе №'+order.id,null,null,now);}return {restored:true};}
+ if(this.prepared(order))return {restored:false,reason:'Заказ уже готовился; расход сохранён.',...this.summary(order.id)};
+ for(const usage of this.db.prepare('SELECT * FROM cafe_stock_usage WHERE order_id=? AND restored_at IS NULL').all(order.id)){const before=this.inventory.row(usage.item_id);if(before.unit_id!==usage.unit_id||before.current_milli===null)fail('Перед отменой восстановите единицу и фактический остаток «'+before.name+'».');if(before.current_milli+usage.amount_milli>999999999999)fail('Остаток превышает допустимый предел.');this.db.prepare('UPDATE inventory_items SET current_milli=current_milli+?,updated_at=?,updated_by=?,revision=revision+1 WHERE id=?').run(usage.amount_milli,now,u.id,usage.item_id);this.db.prepare('UPDATE cafe_stock_usage SET restored_at=? WHERE id=?').run(now,usage.id);this.inventory.event(u,'RETURN',before,this.inventory.row(usage.item_id),'Отмена заказа кафе №'+order.id,null,null,now);}return {restored:true,...this.summary(order.id)};}
  availability(item,groups=this.cafe.catalog().groups,context){
   const recipeCache=new Map(),stockCache=new Map();
   const recipeFor=context?.recipeFor||((id,key)=>{if(!recipeCache.has(key))recipeCache.set(key,this.recipe(id,key));return recipeCache.get(key);});

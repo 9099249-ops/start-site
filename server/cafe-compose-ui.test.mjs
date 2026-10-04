@@ -45,16 +45,54 @@ function fixture({search='',staffMode=true,integrated=staffMode,local=storage(),
  return {api,get,elements,document,context,local,session,requests,confirmations,item:api.quickItem?item:null,submit:(button='checkout-button')=>form.onsubmit({preventDefault(){},submitter:get('#'+button)}),submitDish:()=>get('#dish-form').onsubmit({preventDefault(){}})};
 }
 
-for(const [label,quickSale] of [['Получено наличными',true],['Наличные и в работу',false]])test('Cash checkout: '+label+' submits the selected kitchen flow',async()=>{
- const events=[],f=fixture({fetcher:async url=>({ok:true,status:200,json:async()=>url.endsWith('/quote')?{totalCents:35000,prepMinutes:20}:{id:31,status:'NEW',details:{terminalPaymentRequired:true}}})});
- f.document.dispatchEvent=e=>events.push(e);f.api.seed({cart:[line()]});f.api.cartLines();const form=f.get('#checkout'),buttons=[];form.reportValidity=()=>true;form.requestSubmit=submit=>f.submit(submit.id);
+for(const [label,quickSale] of [['Наличные и в работу',false],['Наличные · сразу выдать',true]])for(const terminal of [true,false])for(const fulfillment of quickSale?['pickup']:['pickup','lounge'])test('Cash checkout: '+label+' / terminal='+terminal+' / '+fulfillment+' submits the selected kitchen flow',async()=>{
+ const events=[],f=fixture({fetcher:async(url,body)=>({ok:true,status:200,json:async()=>url.endsWith('/quote')?{totalCents:35000,prepMinutes:20}:{id:31,status:!terminal&&body.quickSale?'DELIVERED':'NEW',details:{terminalPaymentRequired:terminal}}})});
+ f.document.dispatchEvent=e=>events.push(e);f.get('#checkout').elements.fulfillment.value=fulfillment;f.api.seed({cart:[line()]});f.api.cartLines();const form=f.get('#checkout'),buttons=[];form.reportValidity=()=>true;form.requestSubmit=submit=>f.submit(submit.id);
  const query=f.document.querySelector;f.document.querySelector=s=>s==='#issue-form'||s==='#guest-bill-banner'||s==='#guest-bill-existing'?null:s==='.cafe-integrated'?f.document.body:query(s);
  f.document.querySelectorAll=s=>s==='.cafe-cash-action'?buttons.filter(b=>b.classList.contains('cafe-cash-action')):[];
  Object.assign(f.context,{paintCount(){},MutationObserver:class{observe(){}},button(parent,text,action){const b=f.document.createElement('button');b.textContent=text;b.onclick=action;b.dataset={};parent.append(b);buttons.push(b);return b;}});
  runInNewContext(guestsSource.slice(guestsSource.indexOf('function updateCafeContext()'),guestsSource.indexOf('window.STARTGuests='))+'mount();',f.context);
  const action=buttons.find(b=>b.textContent===label);assert.equal(action.hidden,false);await action.onclick();
- const order=f.requests.find(r=>r.url.endsWith('/orders'));assert.equal(order.body.cashRequested,true);assert.equal(order.body.quickSale,quickSale);assert.equal(events[0].detail.cashRequested,true);assert.equal(events[0].detail.payNow,true);
+ const order=f.requests.find(r=>r.url.endsWith('/orders'));assert.equal(order.body.cashRequested,true);assert.equal(order.body.quickSale,quickSale);assert.equal(events[0].detail.cashRequested,true);assert.equal(events[0].detail.payNow,terminal);assert.equal(events[0].detail.quickSale,!terminal&&quickSale);
 });
+test('Card checkout labels distinguish immediate handoff from kitchen work',()=>{
+ const f=fixture();f.api.seed({cart:[line()]});f.api.cartLines();
+ assert.equal(f.get('#checkout-button').textContent,'Картой');
+ assert.equal(f.get('#prepare-order').textContent,'Картой');
+ f.get('#checkout').elements.fulfillment.value='lounge';f.api.cartLines();
+ assert.equal(f.get('#checkout-button').textContent,'Картой');
+ assert.equal(f.get('#prepare-order').hidden,true);
+ const publicForm=fixture({staffMode:false});publicForm.api.seed({cart:[line()]});publicForm.api.cartLines();
+ assert.equal(publicForm.get('#checkout-button').textContent,'Проверить заказ');
+});
+
+test('Checkout footer groups matching fulfillment actions without flattening controls',()=>{
+ const composer=readFileSync(new URL('../dist/admin/cafe-compose.js',import.meta.url),'utf8');
+ const css=readFileSync(new URL('../dist/admin/cafe-pos.css',import.meta.url),'utf8');
+ assert.ok(composer.includes("deliverGroup.setAttribute('aria-label','Сразу выдать')"));
+ assert.ok(composer.includes("workGroup.setAttribute('aria-label','В работу')"));
+ assert.match(composer,/\['#cash-deliver-order',deliverRow/);
+ assert.match(composer,/\['#cash-prepare-order',workRow/);
+ assert.match(composer,/\['#manual-deliver-order',deliverRow/);
+ assert.match(composer,/\['#manual-register-order',workRow/);
+ assert.match(composer,/semantic\?checkout\.textContent/);
+ assert.match(composer,/cashDeliver\.disabled=checkoutButton\.disabled/);
+ assert.match(composer,/cashWork\.disabled=prepareButton\.hidden\?checkoutButton\.disabled:prepareButton\.disabled/);
+ assert.match(composer,/attributeFilter:\['hidden','disabled'\]/);
+ assert.ok(css.includes('grid-template-columns:repeat(3,minmax(0,1fr))'));
+ assert.ok(css.includes('.checkout-deliver{background:#fbf3f5'));
+ assert.ok(css.includes('.checkout-work{background:#f1f7f3'));
+ assert.ok(css.includes('.checkout-group[hidden]'));
+ assert.ok(css.includes('.checkout-primary button'));
+});
+
+for(const [control,quickSale] of [['checkout-button',true],['prepare-order',false]])test('Card action '+control+' preserves the intended handoff flow',async()=>{
+ const f=fixture({fetcher:async url=>({ok:true,status:200,json:async()=>url.endsWith('/quote')?{totalCents:35000,prepMinutes:20}:{id:32,status:'NEW',details:{terminalPaymentRequired:true}}})});
+ f.api.seed({cart:[line()]});await f.submit(control);
+ const order=f.requests.find(r=>r.url.endsWith('/orders'));
+ assert.equal(order.body.quickSale,quickSale);assert.equal(order.body.cashRequested,false);
+});
+
 test('Staff draft baskets never borrow a new order, another append, or another user',async()=>{
  const local=storage();local.setItem('cafe-staff-cart',JSON.stringify([line(9)]));
  const first=fixture({local});assert.equal(first.api.state().cart.length,0);await first.api.quickAdd(item,first.get('#add'));assert.equal(first.api.state().cart.length,1);
@@ -212,6 +250,15 @@ test('The editor consumes the real stock metadata for ordinary and replacement c
 
 test('External register checkout opens manual confirmation and never asks to pay on CS50',async()=>{
  const events=[],f=fixture({fetcher:async(url)=>({ok:true,status:200,json:async()=>url.endsWith('/quote')?{totalCents:35000,prepMinutes:20}:{id:25,status:'NEW',details:{terminalPaymentRequired:true}}})});f.document.dispatchEvent=e=>events.push(e);f.get('#manual-register-order').id='manual-register-order';f.api.seed({cart:[line()]});await f.submit('manual-register-order');const order=f.requests.find(r=>r.url.endsWith('/orders'));assert.equal(order.body.manualPaidRequested,true);assert.equal(events.length,1);assert.equal(events[0].detail.manualPaidRequested,true);assert.equal(events[0].detail.payNow,false);
+});
+
+for(const [submitter,quickSale] of [['manual-register-order',false],['manual-deliver-order',true]])test('Manual acquiring checkout '+submitter+' preserves selected fulfillment and confirms once',async()=>{
+ const events=[],f=fixture({fetcher:async url=>({ok:true,status:200,json:async()=>url.endsWith('/quote')?{totalCents:35000,prepMinutes:20}:{id:25,status:'NEW',details:{terminalPaymentRequired:true}}})});
+ f.document.dispatchEvent=e=>events.push(e);f.get('#'+submitter).id=submitter;f.api.seed({cart:[line()]});await f.submit(submitter);
+ const order=f.requests.find(r=>r.url.endsWith('/orders'));assert.equal(order.body.manualPaidRequested,true);assert.equal(order.body.quickSale,quickSale);assert.equal(events[0].detail.payNow,false);assert.equal(f.confirmations.length,1);
+});
+test('Declining manual acquiring confirmation creates no order',async()=>{
+ const f=fixture({onConfirm:()=>false,fetcher:async()=>({ok:true,status:200,json:async()=>({totalCents:35000,prepMinutes:20})})});f.get('#manual-deliver-order').id='manual-deliver-order';f.api.seed({cart:[line()]});await f.submit('manual-deliver-order');assert.equal(f.requests.filter(r=>r.url.endsWith('/orders')).length,0);assert.equal(f.api.state().cart.length,1);
 });
 
 test('Selected guest bill changes action, binds added dishes and never creates a quick sale',async()=>{const events=[],f=fixture({fetcher:async(url)=>({ok:true,status:200,json:async()=>url.endsWith('/quote')?{totalCents:35000,prepMinutes:20}:{id:30,status:'NEW',details:{guestBillId:7,terminalPaymentRequired:true}}})});f.document.dispatchEvent=e=>events.push(e);f.api.seed({cart:[line()]});assert.equal(f.context.window.STARTCafeGuest.set({id:7}),true);assert.match(f.get('#checkout-button').textContent,/Добавить в счёт/);await f.submit();const b=f.requests.find(r=>r.url.endsWith('/orders')).body;assert.equal(b.guestBillId,7);assert.equal(b.quickSale,false);assert.equal(events[0].detail.guestBillId,7);assert.equal(events[0].detail.payNow,false);});

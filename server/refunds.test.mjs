@@ -71,7 +71,7 @@ check('Refund: repeated small partial refunds remove exactly the original rounde
 });
 check('Refund HTTP: all staff roles can refund; no login and cross-origin requests cannot',async f=>{
  let user=waiter;f.a.user=()=>user;const h=adminHandler(f.a,'http://test'),server=http.createServer((req,res)=>h(req,res,new URL(req.url,'http://test')));await new Promise(r=>server.listen(0,'127.0.0.1',r));
- try{const url='http://127.0.0.1:'+server.address().port+'/api/admin/refunds',id=rental(f),send=(origin='http://test')=>fetch(url,{method:'POST',headers:{origin,'content-type':'application/json'},body:JSON.stringify(refund('rental',id,10000))});
+ try{const url='http://127.0.0.1:'+server.address().port+'/api/admin/refunds',id=rental(f),send=(origin='http://test')=>fetch(url,{method:'POST',headers:{origin,'content-type':'application/json'},body:JSON.stringify({...refund('rental',id,10000),method:'cash'})});
   for(const role of [waiter,staff,owner]){user=role;assert.equal((await send()).status,200);}
   assert.equal((await send('http://evil')).status,403);user=null;assert.equal((await send()).status,401);
  }finally{await new Promise(r=>server.close(r));}
