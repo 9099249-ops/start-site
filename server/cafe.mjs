@@ -1,5 +1,6 @@
 import {CafeList} from './cafe-list.mjs';
 import cafeNumber from '../dist/cafe-number.js';
+import boardText from '../dist/cafe-board-text.js';
 import {CafeStock} from './cafe-stock.mjs';
 import {readFileSync} from 'node:fs';
 import {randomBytes,createHash,scryptSync} from 'node:crypto';
@@ -31,11 +32,25 @@ export function validateCatalog(input,previous){
  const ids=rows=>{const set=new Set();for(const r of rows){if(!/^[a-zA-Z0-9_-]{1,64}$/.test(r.id)||set.has(r.id))fail('Идентификаторы должны быть уникальны.');set.add(r.id);}return set;};
  const bool=(o,k)=>{if(typeof o[k]!=='boolean')fail('Проверьте переключатели меню.');};
  const catIds=ids(d.categories),groupIds=ids(d.groups);ids(d.items);
+ for(const x of d.items){
+  if(x.blockQuickSale===undefined)x.blockQuickSale=previous?.items.find(p=>p.id===x.id)?.blockQuickSale===true;
+  bool(x,'blockQuickSale');
+ }
  for(const c of d.categories){c.name=str(c.name,80);integer(c.sort,0,10000);bool(c,'active');}
  const allOptionIds=new Set();
  for(const g of d.groups){g.name=str(g.name,80);bool(g,'active');integer(g.min,0,20);integer(g.max,g.min,20);if(!Array.isArray(g.options)||g.options.length>40)fail('Проверьте варианты добавок.');ids(g.options);for(const o of g.options){if(allOptionIds.has(o.id))fail('Идентификаторы добавок должны быть уникальны.');allOptionIds.add(o.id);o.name=str(o.name,80);integer(o.priceCents);bool(o,'active');bool(o,'soldOut');}}
  for(const x of d.items){if(!catIds.has(x.categoryId))fail('Категория не найдена.');x.name=str(x.name);x.description=str(x.description,600,false);x.size=str(x.size,40,false);x.image=str(x.image,200,false);if(x.image&&!/^\/(assets|media)\/[a-zA-Z0-9_.-]+\.(webp|jpg|png)$/.test(x.image))fail('Фото должно быть загружено на сайт.');integer(x.priceCents);integer(x.sort,0,10000);for(const k of ['active','soldOut','yacht','restricted'])bool(x,k);if(!['kitchen','bar','tea_hookah','hookah','none'].includes(x.station))fail('Проверьте цех.');if(previous?.items.find(p=>p.id===x.id)?.restricted||x.station==='hookah')x.restricted=true;if(!Array.isArray(x.tags)||x.tags.length>5)fail('Проверьте метки.');x.tags=x.tags.map(t=>str(t,30));if(!Array.isArray(x.groupIds)||x.groupIds.length>10||new Set(x.groupIds).size!==x.groupIds.length||x.groupIds.some(id=>!groupIds.has(id)))fail('Проверьте группы добавок.');if(!Array.isArray(x.variants)||x.variants.length>40)fail('Проверьте варианты блюда.');ids(x.variants);for(const v of x.variants){v.name=str(v.name,80);integer(v.priceCents);bool(v,'active');}}
  const s=d.settings;bool(s,'enabled');for(const k of ['open','close'])if(!/^(0\d|1\d|2[0-3]):[0-5]\d$/.test(s[k]))fail('Проверьте часы работы.');if(s.open>=s.close)fail('Закрытие должно быть позже открытия.');integer(s.prepMinutes,0,240);s.busyMessage=str(s.busyMessage,240,false);for(const [k,allowed] of [['fulfillments',['pickup','lounge','yacht','place','house']],['payments',['cash','card_on_delivery']]])if(!Array.isArray(s[k])||!s[k].length||s[k].some(v=>!allowed.includes(v)))fail('Проверьте способы получения и оплаты.');
+ const texts=s.boardText===undefined?previous?.settings.boardText:s.boardText;
+ if(texts!==undefined&&(texts===null||typeof texts!=='object'||Array.isArray(texts)))fail('Проверьте тексты табло.');
+ const allowed=new Set(boardText.fields.map(f=>f.key));
+ if(texts&&Object.keys(texts).some(key=>!allowed.has(key)))fail('Неизвестное поле текста табло.');
+ const merged={...boardText.resolve(previous?.settings.boardText),...texts};
+ s.boardText=Object.fromEntries(boardText.fields.map(f=>{
+  const value=merged[f.key];
+  if(typeof value!=='string'||/[\x00-\x1f\x7f-\x9f]/.test(value))fail('Проверьте тексты табло.');
+  return [f.key,str(value,f.max,f.required)];
+ }));
  return {categories:d.categories,items:d.items,groups:d.groups,settings:s};
 }
 export class CafeStore{
@@ -59,7 +74,7 @@ export class CafeStore{
  }
  transaction(fn){this.db.exec('BEGIN IMMEDIATE');try{const result=fn();this.db.exec('COMMIT');return result;}catch(e){this.db.exec('ROLLBACK');throw e;}}
  audit(user,action,body){this.db.prepare('INSERT INTO cafe_audit(actor,action,body,created) VALUES(?,?,?,?)').run(user.id,action,JSON.stringify(body),Date.now());}
- catalog(){const r=this.db.prepare('SELECT * FROM cafe_catalog WHERE id=1').get();return {...JSON.parse(r.body),revision:r.revision};}
+ catalog(){const r=this.db.prepare('SELECT * FROM cafe_catalog WHERE id=1').get(),d=JSON.parse(r.body);return {...d,settings:{...d.settings,boardText:boardText.resolve(d.settings.boardText)},revision:r.revision};}
  saveCatalog(b,u){requireAdmin(u);return this.transaction(()=>{const old=this.catalog();if(b.revision!==old.revision)fail('Меню уже изменено. Обновите редактор.',409);const d=validateCatalog(b,old);this.db.prepare('UPDATE cafe_catalog SET body=?,revision=revision+1 WHERE id=1').run(JSON.stringify(d));this.audit(u,'catalog',{revision:old.revision+1});return this.catalog();});}
   publicAvailability(now=Date.now()){
    const s=this.catalog().settings,clock=new Date(now+10800000).toISOString().slice(11,16),active=this.db.prepare("SELECT w.id FROM employee_work_sessions w JOIN admin_users u ON u.id=w.user_id WHERE u.login<>'admin' AND w.started_at<=? AND (w.ended_at IS NULL OR w.ended_at>?) LIMIT 1").get(now,now);
@@ -108,18 +123,23 @@ export class CafeStore{
    const selected=l.optionIds||[];if(!Array.isArray(selected)||selected.length>60||new Set(selected).size!==selected.length)fail('Проверьте добавки.');const modifiers=[];
    for(const id of selected){let found=false;for(const g of c.groups.filter(g=>g.active&&x.groupIds.includes(g.id))){const o=g.options.find(o=>o.id===id&&o.active&&!o.soldOut);if(o){modifiers.push({groupId:g.id,groupName:g.name,optionId:o.id,name:o.name,priceCents:o.priceCents});price+=o.priceCents;found=true;break;}}if(!found)fail('Добавка недоступна. Обновите корзину.',409);}
    for(const g of c.groups.filter(g=>g.active&&x.groupIds.includes(g.id))){const count=modifiers.filter(m=>m.groupId===g.id).length;if(count<g.min||count>g.max)fail(`«${g.name}»: выберите от ${g.min} до ${g.max}.`);}
-   return {itemId:x.id,name:x.name,basePriceCents:x.priceCents,variant:variant?copy(variant):null,modifiers,quantity,unitCents:price,totalCents:price*quantity,comment:str(l.comment||'',200,false),station:x.station};
+   return {itemId:x.id,name:x.name,basePriceCents:x.priceCents,variant:variant?copy(variant):null,modifiers,quantity,unitCents:price,totalCents:price*quantity,comment:str(l.comment||'',200,false),station:x.station,...(x.blockQuickSale===true?{blockQuickSale:true}:{})};
   });const totalCents=items.reduce((n,i)=>n+i.totalCents,0);integer(totalCents,0,100000000);return {items,totalCents};
  }
  priced(lines,details,existing=null,u=null){const q=this.calculate(lines,details.fulfillment,u);if(details.complimentary)return {...q,menuValueCents:q.totalCents,totalCents:0,...(details.fulfillment==='house'?{deliveryCents:0,subtotalCents:q.totalCents}:{})};if(details.fulfillment!=='house')return q;const subtotal=q.totalCents+(existing?.details.items.reduce((n,i)=>n+i.totalCents,0)||0),deliveryCents=subtotal>=100000?0:30000;return {...q,subtotalCents:subtotal,deliveryCents,totalCents:q.totalCents+deliveryCents-(existing?.details.deliveryCents||0)};}
-  quote(b,u,now=Date.now()){const {details}=this.resolve(b,u,now);let existing=null;if(b.appendId){requireStaff(u);existing=this.order(integer(b.appendId,1),u);this.authorizeComplimentaryAppend(existing,u);if(b.complimentary)fail('Для дозаказа используется исходный вид оплаты.');if(existing.revision!==b.appendRevision||['CANCELLED','DELIVERED'].includes(existing.status))fail('Заказ закрыт или изменён.',409);this.authorizeAppend(existing);}const q=this.priced(b.items,existing?.details||details,existing,u);this.stock.check(q.items);return {...q,prepMinutes:details.prepMinutes};}
+ assertQuickSale(b,items){
+  if(b.quickSale!==true)return;
+  const catalog=this.catalog(),blocked=items.filter(line=>!line.custom&&catalog.items.find(item=>item.id===line.itemId)?.blockQuickSale===true);
+  if(blocked.length)fail('Нельзя сразу выдать: '+[...new Set(blocked.map(item=>item.name))].join(', ')+'. Выберите «В работу».',409);
+ }
+  quote(b,u,now=Date.now()){const {details}=this.resolve(b,u,now);let existing=null;if(b.appendId){requireStaff(u);existing=this.order(integer(b.appendId,1),u);this.authorizeComplimentaryAppend(existing,u);if(b.complimentary)fail('Для дозаказа используется исходный вид оплаты.');if(existing.revision!==b.appendRevision||['CANCELLED','DELIVERED'].includes(existing.status))fail('Заказ закрыт или изменён.',409);this.authorizeAppend(existing);}const q=this.priced(b.items,existing?.details||details,existing,u);this.assertQuickSale(b,q.items);this.stock.check(q.items);return {...q,prepMinutes:details.prepMinutes};}
  limit(key,now,max){const k=hash(key);const row=this.db.prepare('SELECT * FROM cafe_limits WHERE key=?').get(k);if(row&&row.expires>now&&row.count>=max)fail('Слишком много заказов. Повторите немного позже.',429);this.db.prepare('INSERT INTO cafe_limits VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=CASE WHEN expires<=? THEN 1 ELSE count+1 END,expires=CASE WHEN expires<=? THEN excluded.expires ELSE expires END').run(k,now+600000,now,now);}
  event(orderId,kind,u,body,now,requestId=null){const id=Number(this.db.prepare('INSERT INTO cafe_order_events(order_id,kind,actor,body,created,request_id) VALUES(?,?,?,?,?,?)').run(orderId,kind,u?.id||null,JSON.stringify(body),now,requestId).lastInsertRowid);const pending=JSON.parse(this.db.prepare('SELECT details FROM cafe_orders WHERE id=?').get(orderId).details).pendingKitchen;if(!pending)this.admin.printStore?.cafeEvent(id,u,now);return id;}
  create(b,u=null,ip='local',now=Date.now()){
   if(b.complimentary!==undefined)this.complimentary(b,u);
   if(!/^[a-f0-9-]{36}$/.test(b.requestId||''))fail('Обновите форму заказа.');const fingerprint=hash(stable(b));
   return this.transaction(()=>{const old=this.db.prepare('SELECT * FROM cafe_orders WHERE request_id=?').get(b.requestId);if(old){if(old.fingerprint!==fingerprint)fail('Этот запрос уже использован. Обновите заказ.',409);return {...this.receipt(old),duplicate:true};}
-   const {details,place}=this.resolve(b,u,now),q=this.priced(b.items,details,null,u);if(b.expectedTotalCents!==q.totalCents)fail('Цена изменилась. Проверьте обновлённый итог.',409);
+   const {details,place}=this.resolve(b,u,now),q=this.priced(b.items,details,null,u);this.assertQuickSale(b,q.items);if(b.expectedTotalCents!==q.totalCents)fail('Цена изменилась. Проверьте обновлённый итог.',409);
    if(b.guestBillId!==undefined){if(!u||!this.admin.guestBills||details.complimentary)fail('Нельзя добавить заказ в счёт.',403);const bill=this.admin.guestBills.editable(b.guestBillId,u);details.guestBillId=bill.id;details.guestDeferred=!!bill.deferred;details.terminalPaymentRequired=true;details.pendingKitchen=!bill.deferred;details.terminalQuickSale=!bill.deferred&&b.quickSale===true;}
    if(!u&&this.admin.cashLedger?.enabled){details.terminalPaymentRequired=true;details.manualPaymentRequired=true;}
     if(!u){this.limit('ip:'+ip,now,8);this.limit('phone:'+details.phone,now,5);}else this.limit('staff:'+u.id,now,120);let clientId=null;if(details.phone)clientId=this.sms.client(details.name,details.phone,now,false).id;
@@ -148,6 +168,7 @@ export class CafeStore{
     if(b.status==='CANCELLED'&&paid&&!r.details.complimentary&&r.status==='DELIVERED')fail('Выданный оплаченный заказ остаётся выполненным. Денежный возврат хранится отдельно.',409);
     if(this.terminal?.locked(r.id)&&!(r.details.terminalPaidAt&&(b.status!=='CANCELLED'||r.refundedCents===r.total_cents&&['done','cash_done'].includes(r.terminalPayment?.state))))fail('Оплата требует проверки. Проверьте статус оплаты и выберите подтверждённый результат; повторное списание заблокировано.',409);
     if(!transitions[r.status]?.includes(b.status))fail('Недопустимый переход статуса.');
+    if(b.status==='DELIVERED'&&r.status!=='READY'&&r.details.items.some(item=>item.blockQuickSale===true))fail('Сначала отметьте «Готов к выдаче», затем выдайте заказ.',409);
     if(b.status==='CANCELLED'&&b.prepared!==undefined&&typeof b.prepared!=='boolean')fail('Укажите, начали ли готовить заказ.');
     const comment=str(b.comment||'',200,false);
     if(b.status==='CANCELLED'&&b.prepared===true&&!this.stock.prepared(r)){this.event(r.id,'COOKING',u,{manualPreparationConfirmation:true},now);r.events.push({kind:'COOKING'});}

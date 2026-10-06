@@ -1,0 +1,26 @@
+#cafe-norms{margin:16px 0;padding:0;min-width:0}
+#cafe-norms[hidden]{display:none}
+#cafe-norms h2{font-size:18px;line-height:1.25;margin:0 0 10px}
+#cafe-norms .cafe-norms-controls{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px}
+#cafe-norms .cafe-norms-controls input[type=search]{min-width:180px;max-width:360px;min-height:36px;padding:6px 9px}
+#cafe-norms .cafe-norms-controls label{display:flex;align-items:center;gap:7px;font-size:13px}
+#cafe-norms .cafe-norms-status{min-height:0;margin:0;color:#9b352d;font-size:13px}
+#cafe-norms .cafe-norms-status:empty{display:none}
+#cafe-norms .cafe-norms-viewport{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain}
+#cafe-norms .cafe-norms-table{width:100%;border-collapse:collapse;font-size:13px;line-height:1.35}
+#cafe-norms .cafe-norms-table th,#cafe-norms .cafe-norms-table td{padding:8px 9px;border-bottom:1px solid #dedfdf;text-align:left;vertical-align:top}
+#cafe-norms .cafe-norms-table th{font-size:11px;font-weight:600;color:#555e62;white-space:nowrap}
+#cafe-norms .cafe-norms-table td.cafe-norms-unit{max-width:80px;white-space:normal;overflow-wrap:anywhere}
+#cafe-norms .cafe-norms-table td.cafe-norms-number{font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+#cafe-norms .cafe-norms-review{min-width:150px}
+#cafe-norms .cafe-norms-review small{display:block;color:#626b6f;font-size:11px}
+#cafe-norms .cafe-norms-review span{display:block;margin-top:3px;max-width:32em;white-space:normal;overflow-wrap:anywhere}
+#cafe-norms .cafe-norms-review a{display:block;margin-top:4px;font-size:12px}
+#cafe-norms .cafe-norms-review button{margin-top:6px;min-height:32px;padding:4px 8px}
+@media(max-width:680px){
+ #cafe-norms{margin:12px 0}
+ #cafe-norms .cafe-norms-controls{align-items:flex-start;flex-direction:column;gap:8px}
+ #cafe-norms .cafe-norms-controls input[type=search]{box-sizing:border-box;width:100%;max-width:none}
+ #cafe-norms .cafe-norms-table{min-width:760px}
+ #cafe-norms .cafe-norms-table th,#cafe-norms .cafe-norms-table td{padding:7px 8px}
+}

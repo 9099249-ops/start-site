@@ -1,0 +1,6 @@
+body.cafe-integrated #compose .menu-subcategory{min-width:0;margin:12px 0 18px}
+body.cafe-integrated #compose .menu-subcategory>h3{margin:12px 0 8px;padding:0 2px;color:#402630;font-size:16px;font-weight:700;line-height:1.3}
+body.cafe-integrated #compose .menu-subcategory .menu-grid{grid-template-columns:repeat(var(--category-columns,3),minmax(0,1fr));gap:8px}
+body.cafe-integrated #compose .staff-menu-group>.menu-grid>.menu-subcategory{grid-column:1/-1}
+body.cafe-integrated #compose .menu-group-empty{margin:8px 2px;color:#74655f;font-size:13px}
+@media(max-width:759px){body.cafe-integrated #compose .menu-subcategory .menu-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}body.cafe-integrated #compose .menu-subcategory .menu-item{min-width:0}}

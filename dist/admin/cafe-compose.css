@@ -64,7 +64,7 @@ body.cafe-integrated #compose .menu-cat{scroll-margin-top:calc(var(--desk-chrome
 @media(min-width:760px){
  body.cafe-integrated #compose .cafe-wrap{display:grid;grid-template-columns:184px minmax(0,1fr);gap:16px;align-items:start;padding-bottom:0}
  body.cafe-integrated #compose .compose-menu-content{padding-bottom:76px}
- body.cafe-integrated #compose .menu-categories{flex-direction:column;position:sticky;top:calc(var(--desk-chrome-height,0px) + 12px);height:var(--categories-available-height,calc(100dvh - var(--desk-chrome-height,0px) - 160px));max-height:var(--categories-available-height,calc(100dvh - var(--desk-chrome-height,0px) - 160px));min-height:0;overflow-y:auto;z-index:5}
+ body.cafe-integrated #compose .menu-categories{flex-direction:column;position:sticky;top:calc(var(--desk-chrome-height,0px) + 12px);height:auto;max-height:var(--categories-available-height,calc(100dvh - var(--desk-chrome-height,0px) - 160px));min-height:0;overflow-y:auto;z-index:5}
 }
 @media(max-width:759px){
  body.cafe-integrated #compose .cafe-wrap{display:flex;flex-direction:column;gap:12px}
@@ -73,6 +73,10 @@ body.cafe-integrated #compose .menu-cat{scroll-margin-top:calc(var(--desk-chrome
  body.cafe-integrated #compose .menu-categories{order:1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));position:static;width:100%;overflow:visible}
  body.cafe-integrated #compose .menu-categories a{min-height:48px;padding:10px;font-size:14px}
  body.cafe-integrated #compose #menu-list{order:2;width:100%}
+}
+@media(max-width:759px){
+ body.cafe-integrated #compose .menu-categories{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));position:sticky!important;top:calc(var(--desk-chrome-height,0px) + var(--cafe-toolbar-height,46px) + 10px)!important;width:100%;height:auto;max-height:none;overflow:visible!important;gap:4px;padding:5px;z-index:9}
+ body.cafe-integrated #compose .menu-categories a{min-width:0;min-height:44px;padding:7px 5px;font-size:13px;line-height:1.15;overflow-wrap:anywhere}
 }
 
 /* The new staff order keeps its destination and actions visible while only the
@@ -87,14 +91,15 @@ body.cafe-integrated #cart-dialog.cafe-compact-order #location-label{display:non
 body.cafe-integrated #cart-dialog.cafe-compact-order #checkout:has(#staff-place-label[hidden]) #location-label{grid-column:1/-1}
 body.cafe-integrated #cart-dialog.cafe-compact-order #place-later{display:none}
 body.cafe-integrated #cart-dialog.cafe-compact-order #checkout-extra[hidden]{display:none!important}
-body.cafe-integrated #cart-dialog .cafe-order-options{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:6px;margin-bottom:6px;align-items:start}
-body.cafe-integrated #cart-dialog .cafe-order-options>.cafe-fulfillment-choices{margin:0}
-body.cafe-integrated #cart-dialog #free-order-options.cafe-employee-order{min-width:0;padding:0;border:0}
-body.cafe-integrated #cart-dialog #free-order-options.cafe-employee-order>button{width:100%;min-height:50px;margin:0;padding:7px 6px;border:1px solid var(--line,#dfe2e4);border-radius:5px;background:#fff;color:var(--ink,#172c47);text-align:center;font-size:13px!important;line-height:1.3;overflow-wrap:anywhere}
+body.cafe-integrated #cart-dialog .cafe-fulfillment-choices{margin-bottom:6px}
+body.cafe-integrated #cart-dialog .cart-footer #free-order-options.cafe-employee-order{width:100%;min-width:0;padding:0;border:0}
+body.cafe-integrated #cart-dialog .cart-footer #free-order-options.cafe-employee-order>button{width:100%;min-height:50px;margin:6px 0;padding:7px 6px;border:1px solid var(--line,#dfe2e4);border-radius:5px;background:#fff;color:var(--ink,#172c47);text-align:center;font-size:13px!important;line-height:1.3;overflow-wrap:anywhere}
 body.cafe-integrated #cart-dialog #free-order-options.cafe-employee-order>button[aria-pressed=true]{background:var(--accent,#852a44);border-color:var(--accent,#852a44);color:#fff;font-weight:600}
-body.cafe-integrated #cart-dialog .cafe-employee-order>p{margin:4px 0}
+body.cafe-integrated #cart-dialog .cart-footer .cafe-employee-order>p{margin:4px 0}
 body.cafe-integrated #cart-dialog.cafe-employee-selected .cart-footer .cafe-guest-action{display:none!important}
 body.cafe-integrated #cart-dialog.cafe-employee-selected #staff-place-label{display:none!important}
+body.cafe-integrated #cart-dialog .cart-footer .checkout-actions #cash-deliver-order,
+body.cafe-integrated #cart-dialog .cart-footer .checkout-actions #cash-prepare-order{padding-right:2px!important;padding-left:2px!important;font-size:12px!important;white-space:nowrap;overflow-wrap:normal}
 
 /* Compact, unambiguous ingredient choices in the admin composer. */
 body.cafe-integrated #dish-dialog #dish-options fieldset{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding:10px;margin:8px 0}
@@ -106,3 +111,15 @@ body.cafe-integrated #dish-dialog #dish-options .cafe-choice input{width:18px;he
 body.cafe-integrated #dish-dialog #dish-options .dish-choice-search,body.cafe-integrated #dish-dialog #dish-options .dish-choice-empty{grid-column:1/-1;margin:0}
 body.cafe-integrated #dish-dialog #dish-options .dish-choice-search{font-size:16px;min-height:40px;padding:8px 10px}
 @media(max-width:400px){body.cafe-integrated #dish-dialog #dish-options fieldset{grid-template-columns:1fr}}
+
+/* Staff-only, locally configured catalog favorites. */
+body.cafe-integrated #compose .cafe-favorites-tools{display:flex;align-items:center;gap:6px;margin:0 0 6px}
+body.cafe-integrated #compose .cafe-favorites-filter{min-height:44px;padding:8px 14px;border:1px solid #d9c8cb;border-radius:6px;background:#fff;color:#632c3d;font:600 14px/1.2 Arial,system-ui,sans-serif;touch-action:manipulation}
+body.cafe-integrated #compose .cafe-favorites-filter[aria-pressed=true]{background:#632c3d;border-color:#632c3d;color:#fff}
+body.cafe-integrated #compose .menu-item[data-item-id]{position:relative}
+body.cafe-integrated #compose .menu-item[data-item-id]>h3{padding-right:48px;box-sizing:border-box}
+body.cafe-integrated #compose .cafe-favorite-toggle{position:absolute;z-index:1;top:4px;right:4px;display:grid;place-items:center;width:44px;height:44px;box-sizing:border-box;padding:0;border:1px solid #ded8d5;border-radius:6px;background:#fff;color:#7a263c;font:700 25px/1 Arial,system-ui,sans-serif;touch-action:manipulation}
+body.cafe-integrated #compose .cafe-favorite-toggle[aria-pressed=true]{background:#fff3d6;color:#7a4b00}
+body.cafe-integrated #compose .cafe-favorite-toggle:focus-visible,body.cafe-integrated #compose .cafe-favorites-filter:focus-visible{outline:3px solid #16817b;outline-offset:2px}
+body.cafe-integrated #compose .menu-item[hidden],body.cafe-integrated #compose .menu-cat[hidden]{display:none!important}
+@media(max-width:759px){body.cafe-integrated #compose .cafe-favorites-tools{order:2}body.cafe-integrated #compose #menu-list{order:3}}

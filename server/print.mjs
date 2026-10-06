@@ -82,6 +82,9 @@ export class PrintStore {
   }
   const items=e.kind==='CANCELLED'?d.items:batch.items;
   const payload={type:'cafe_order',order_id:`start-cafe-${r.id}-event-${e.id}`,order_number:cafeNumber(r.id),ticket_kind:e.kind,order_source:['admin','waiter'].includes(r.source)?'admin':'site',customer_name:label(d.name),fulfillment:label((d.guestDeferred&&!d.terminalPaidAt?'НЕ ОПЛАЧЕНО · НА СЧЁТ №'+d.guestBillId+' · ':'')+(d.complimentary?'БЕСПЛАТНО · '+d.complimentary.recipientName+' · ':'')+(d.place?.name||{house:'Домик в яхт клубе: '+d.house,pickup:'Заберут в кафе',lounge:'Лаунж-зона',yacht:'На яхту / катер',place:'На месте'}[d.fulfillment])),comment:label([d.complimentary?'БЕСПЛАТНО. К оплате: 0 ₽. '+(d.complimentary.comment||''):'',d.yacht,d.location,d.deliveryCents!==undefined?'Доставка: '+rubles(d.deliveryCents)+' ₽':'',d.requestedAt?'К '+d.requestedAt:'',d.comment].filter(Boolean).join('\n'),1500),items:items.map(i=>({name:label(i.name,200),qty:i.quantity,price:rubles(d.complimentary?0:i.totalCents),modifiers:[i.variant?.name,...(i.modifiers||[]).map(m=>m.name),i.comment].filter(Boolean).map(x=>label(x,200))})),total:rubles(e.kind==='CANCELLED'?r.total_cents:batch.totalCents)};
+  // Promotion eligibility uses the immutable order snapshot, not delivery/reprint time.
+  payload.order_created_at=new Date(r.created).toISOString();
+  payload.order_total=rubles(d.complimentary?0:r.total_cents);
   return this.enqueue(`cafe:event:${e.id}`,payload,{orderId:r.id,eventId:e.id,eventKind:e.kind},u,now);
  }
  cafeJobs(orderId,u){staff(u);if(!Number.isSafeInteger(orderId)||orderId<1)fail('Неверный заказ.');return {jobs:this.db.prepare("SELECT j.id FROM print_jobs j JOIN print_documents d ON d.id=j.document_id WHERE d.kind='cafe_order' AND json_extract(d.snapshot,'$.orderId')=? ORDER BY j.created_at,j.rowid").all(orderId).map(r=>this.job(r.id)),device:this.device()};}

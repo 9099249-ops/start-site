@@ -19,9 +19,14 @@ window.openCafeComposer=()=>loading||(loading=(async()=>{
   const contact=host.querySelector('#checkout-contact'),timing=form.elements.timing.closest('.cafe-form-grid'),comment=form.elements.comment.closest('label');
   extra.append(contact,timing,comment);form.querySelector('#checkout-summary').before(extra);
   host.querySelector('#clear-cart').textContent='Сбросить';host.querySelector('#clear-cart').setAttribute('aria-label','Сбросить заказ');
-  const script=document.createElement('script');script.src='/cafe.js?v=checkout-groups-20261004';
+  const script=document.createElement('script');script.src='/cafe.js?v=consumables-20261006-1';
   await new Promise((resolve,reject)=>{script.onload=resolve;script.onerror=()=>reject(Error('Не удалось загрузить оформление заказа.'));document.head.append(script);});
   if(await window.cafeComposerReady===false)throw Error('Не удалось загрузить меню. Нажмите «Новый заказ», чтобы повторить.');
+  const groups=document.createElement('script');groups.src='/admin/cafe-menu-groups.js?v=staff-menu-groups-20261005';
+  await new Promise(resolve=>{groups.onload=groups.onerror=resolve;document.head.append(groups);});
+  try{window.STARTCafeMenuGroups?.mount(host);}catch{console.warn('Menu grouping unavailable');}
+  const favorites=document.createElement('script');favorites.src='/admin/cafe-favorites.js?v=staff-menu-groups-20261005';
+  favorites.onload=()=>window.STARTCafeFavorites?.mount(host);document.head.append(favorites);
 
   // Reuse the existing controls and their handlers in one compact workspace row.
   const tabs=document.querySelector('#cabinet>.tabs'),search=host.querySelector('.cafe-search');
@@ -35,8 +40,8 @@ window.openCafeComposer=()=>loading||(loading=(async()=>{
   deliverGroup.className='checkout-group checkout-deliver';deliverGroup.setAttribute('role','group');deliverGroup.setAttribute('aria-label','Сразу выдать');
   workGroup.className='checkout-group checkout-work';workGroup.setAttribute('role','group');workGroup.setAttribute('aria-label','В работу');
   deliverRow.className=workRow.className='checkout-actions';
-  const deliverHeading=document.createElement('h3'),workHeading=document.createElement('h3');deliverHeading.textContent='Сразу выдать';workHeading.textContent='В работу';
-  deliverGroup.append(deliverHeading,deliverRow);workGroup.append(workHeading,workRow);
+  const deliverHeading=document.createElement('h3'),workHeading=document.createElement('h3'),blockedNote=document.createElement('p');deliverHeading.textContent='Сразу выдать';workHeading.textContent='В работу';blockedNote.className='cafe-quick-sale-blocked';blockedNote.setAttribute('role','status');blockedNote.hidden=true;
+  deliverGroup.append(deliverHeading,blockedNote,deliverRow);workGroup.append(workHeading,workRow);
   for(const id of ['checkout-summary','checkout-error'])footer.append(scroll.querySelector('#'+id));
   footer.append(deliverGroup,workGroup);
   const primaryAction=document.createElement('div');primaryAction.className='checkout-primary';footer.append(primaryAction);
@@ -109,14 +114,16 @@ window.openCafeComposer=()=>loading||(loading=(async()=>{
   // Use the original accounting fields and pending locks for a one-tap
   // employee order. The recipient is the signed-in employee.
   const freeOptions=form.querySelector('#free-order-options');
+  let employeeOptions=null;
   if(newOrder&&freeOptions){
    const reason=form.elements.freeReason,recipient=form.elements.freeRecipient,freeComment=form.elements.freeComment;
    const compact=document.createElement('div'),employee=document.createElement('button'),source=document.createElement('div'),pending=document.createElement('p');
    form.dataset.quickEmployee='1';
    compact.id='free-order-options';compact.className='cafe-employee-order';employee.type='button';employee.textContent='Сотруднику';
+   employeeOptions=compact;
    source.hidden=true;source.append(reason.closest('label'),recipient.closest('label'),freeComment.closest('label'));
-   pending.className='cafe-muted';pending.setAttribute('role','status');pending.hidden=true;compact.append(employee,pending,source);freeOptions.replaceWith(compact);
-   const orderOptions=document.createElement('div');orderOptions.className='cafe-order-options';form.prepend(orderOptions);orderOptions.append(choices,compact);scroll.before(form);
+   pending.className='cafe-muted';pending.setAttribute('role','status');pending.hidden=true;compact.append(employee,pending);freeOptions.replaceWith(source);
+   choices.classList.add('cafe-fulfillment-choices');scroll.before(form);
    const changed=()=>reason.dispatchEvent(new Event('change',{bubbles:true}));
    updateEmployee=()=>{
     const selected=reason.value==='employee';
@@ -124,7 +131,7 @@ window.openCafeComposer=()=>loading||(loading=(async()=>{
     employee.setAttribute('aria-pressed',String(!!reason.value));employee.disabled=reason.disabled||fulfillment.disabled;
     employee.title=selected?'Бесплатно сотруднику. Нажмите, чтобы вернуть обычную цену.':'Выдать бесплатно сотруднику';
     cart.classList.toggle('cafe-employee-selected',selected);
-    pending.hidden=!employee.disabled||!reason.value;pending.textContent=pending.hidden?'':'Предыдущая отправка за счёт заведения. Условия сохранены.';
+    pending.hidden=!reason.value;pending.textContent=!reason.value?'':employee.disabled?'Предыдущая отправка за счёт заведения. Условия сохранены.':selected?'Бесплатно · '+(recipient.selectedOptions[0]?.textContent||'Сотрудник'):'За счёт заведения';
    };
    employee.onclick=()=>{
     if(employee.disabled)return;
@@ -143,14 +150,15 @@ window.openCafeComposer=()=>loading||(loading=(async()=>{
    workRow.append(manualRegister);deliverRow.append(manualDeliver);
    const syncManual=()=>{
     const unavailable=!!form.elements.freeReason?.value||!!form.dataset.guestBill;
-    manualRegister.disabled=checkoutButton.disabled;manualRegister.hidden=unavailable;
-    manualDeliver.disabled=checkoutButton.disabled||prepareButton.disabled;manualDeliver.hidden=unavailable||prepareButton.hidden;
+    manualRegister.disabled=prepareButton.hidden?checkoutButton.disabled:prepareButton.disabled;manualRegister.hidden=unavailable;
+    manualDeliver.disabled=checkoutButton.disabled||prepareButton.disabled||!!form.dataset.quickSaleBlockedItems;manualDeliver.hidden=unavailable||prepareButton.hidden;
    };
    const manualObserver=new MutationObserver(syncManual);manualObserver.observe(checkoutButton,{attributes:true});manualObserver.observe(prepareButton,{attributes:true});form.addEventListener('change',syncManual);syncManual();
   }
   // Guest account actions can arrive after the composer loads. Keep the original
   // controls in their fulfillment rows and retain their checkout form association.
   function placeGuestActions(){
+   const blockedItems=form.dataset.quickSaleBlockedItems||'';blockedNote.hidden=!blockedItems;blockedNote.textContent=blockedItems?'Только «В работу»: '+blockedItems+'.':'';
    const setAttribute=(button,name,value)=>{if(button.getAttribute(name)!==value)button.setAttribute(name,value);};
    const context=form.querySelector('.guest-context');
    if(context&&context.parentNode!==footer)footer.append(context);
@@ -169,13 +177,14 @@ window.openCafeComposer=()=>loading||(loading=(async()=>{
     const ordered=order.filter(button=>button?.parentElement===row);ordered.forEach((button,index)=>{if(row.children[index]!==button)row.insertBefore(button,row.children[index]||null);});
    }
    const cashDeliver=form.querySelector('#cash-deliver-order')||footer.querySelector('#cash-deliver-order'),cashWork=form.querySelector('#cash-prepare-order')||footer.querySelector('#cash-prepare-order');
-   if(cashDeliver)cashDeliver.disabled=checkoutButton.disabled;
+   if(cashDeliver)cashDeliver.disabled=checkoutButton.disabled||!!blockedItems;
    if(cashWork)cashWork.disabled=prepareButton.hidden?checkoutButton.disabled:prepareButton.disabled;
    deliverGroup.hidden=[...deliverRow.children].every(button=>button.hidden);
    workGroup.hidden=[...workRow.children].every(button=>button.hidden);
    primaryAction.hidden=!primaryAction.children.length||primaryAction.children[0].hidden;
+   if(employeeOptions&&footer.lastElementChild!==employeeOptions)footer.append(employeeOptions);
   }
-  new MutationObserver(placeGuestActions).observe(form,{childList:true,subtree:true});new MutationObserver(placeGuestActions).observe(checkoutButton,{attributes:true,attributeFilter:['hidden','disabled'],childList:true,characterData:true,subtree:true});new MutationObserver(placeGuestActions).observe(prepareButton,{attributes:true,attributeFilter:['hidden','disabled']});placeGuestActions();
+  new MutationObserver(placeGuestActions).observe(form,{childList:true,subtree:true});new MutationObserver(placeGuestActions).observe(form,{attributes:true,attributeFilter:['data-quick-sale-blocked-items']});new MutationObserver(placeGuestActions).observe(checkoutButton,{attributes:true,attributeFilter:['hidden','disabled'],childList:true,characterData:true,subtree:true});new MutationObserver(placeGuestActions).observe(prepareButton,{attributes:true,attributeFilter:['hidden','disabled']});placeGuestActions();
   // Size panels from their actual viewport position; embedded workspaces already
   // exclude the shared footer, while standalone pages expose its measured height.
   let fitFrame=0,menuLayoutDirty=true,categoryEntries=[];
@@ -210,17 +219,27 @@ window.openCafeComposer=()=>loading||(loading=(async()=>{
     return {section,link};
    });
   }
-  let activeCategory='';
+  let activeCategory='',requestedCategory='';
+  function chooseActiveCategory(positions,top,requestedId,atBottom){
+   let current=positions[0];
+   for(const entry of positions){if(entry.top>top)break;current=entry;}
+   const requested=positions.find(entry=>entry.section.id===requestedId);
+   const requestedBelowAnchor=requested&&requested.top>=top-12;
+   if(requested&&((atBottom&&requestedBelowAnchor)||(!atBottom&&Math.abs(requested.top-current.top)<1)))current=requested;
+   else{requestedId='';if(atBottom)current=positions[positions.length-1];}
+   return {current,requestedId};
+  }
   function updateCategory(){
    if(!categoryEntries.length){activeCategory='';return;}
    // Read geometry together before changing any attributes; scrolling must not
    // recount every dish or force a layout between each category link.
-   const positions=categoryEntries.map(entry=>({...entry,top:entry.section.getBoundingClientRect().top}));
+   const positions=categoryEntries.filter(entry=>!entry.section.hidden).map(entry=>({...entry,top:entry.section.getBoundingClientRect().top}));
+   if(!positions.length){activeCategory='';for(const {link} of categoryEntries)link?.removeAttribute('aria-current');return;}
    const top=(parseFloat(getComputedStyle(positions[0].section).scrollMarginTop)||0)+10;
-   let current=positions[0];
-   for(const entry of positions){if(entry.top>top)break;if(entry.top>current.top+1||entry.section.id===activeCategory)current=entry;}
-   const selected=positions.find(entry=>entry.section.id===activeCategory);
-   if(selected&&Math.abs(selected.top-current.top)<1)current=selected;
+   const scrollRoot=document.scrollingElement||document.documentElement;
+   const atBottom=scrollRoot.scrollTop+window.innerHeight>=scrollRoot.scrollHeight-2;
+   const selection=chooseActiveCategory(positions,top,requestedCategory,atBottom),current=selection.current;
+   requestedCategory=selection.requestedId;
    const changed=activeCategory!==current.section.id;activeCategory=current.section.id;
    let offset=0;
    if(changed&&current.link&&matchMedia('(min-width:760px)').matches){
@@ -237,7 +256,10 @@ window.openCafeComposer=()=>loading||(loading=(async()=>{
   categories.addEventListener('click',e=>{
    const link=e.target.closest('a[href]');if(!link||!categories.contains(link))return;
    const section=categoryEntries.find(entry=>'#'+entry.section.id===link.getAttribute('href'))?.section;if(!section)return;
-   e.preventDefault();activeCategory=section.id;section.scrollIntoView({block:'start',behavior:'instant'});fitCart();
+   if(section.hidden||!link.isConnected)return;
+   e.preventDefault();requestedCategory=activeCategory=section.id;
+   for(const entry of categoryEntries){if(!entry.link)continue;if(entry.section===section)entry.link.setAttribute('aria-current','true');else entry.link.removeAttribute('aria-current');}
+   section.scrollIntoView({block:'start',behavior:'instant'});fitCart();
   });
   new MutationObserver(()=>{menuLayoutDirty=true;fitCart();}).observe(categories,{childList:true});
   window.STARTGuests?.updateCafeContext();fitCart();

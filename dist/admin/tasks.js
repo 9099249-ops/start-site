@@ -1,6 +1,6 @@
 (()=>{'use strict';const $=s=>document.querySelector(s);let lastRead=0,lastSignature='',items=[],user,filter='open',kind='task',loading=false,mutating=false,drag=null,requestId=crypto.randomUUID(),resetTimer;
 const el=(tag,text)=>{const n=document.createElement(tag);n.textContent=text;return n;};
-async function api(path='',body){const r=await fetch('/api/admin/tasks'+path,{cache:'no-store',...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});const d=await r.json();if(!r.ok)throw Error(d.error||'Не удалось загрузить дела.');return d;}
+async function api(path='',body){const r=await fetch('/api/admin/tasks'+path,{cache:'no-store',...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});const d=await r.json();if(!r.ok)throw Error(d.error||'Не удалось загрузить дела.');if(body)document.dispatchEvent(new Event('station-updated'));return d;}
 function notice(s){$('#tasks-notice').textContent=s;}
 function stopDrag(){
  const previous=drag;if(!previous)return null;drag=null;cancelAnimationFrame(previous.frame);

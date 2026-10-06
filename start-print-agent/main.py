@@ -22,7 +22,7 @@ import subprocess
 import threading
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.request import Request, urlopen, build_opener, HTTPRedirectHandler
@@ -73,6 +73,27 @@ def validate(data):
     if not label(ident, 128).strip() or '\n' in ident:
         raise ValueError('non-empty order_id/report_id required')
     if kind == 'cafe_order':
+        has_created_at = 'order_created_at' in data
+        has_order_total = 'order_total' in data
+        if has_created_at != has_order_total:
+            raise ValueError('order_created_at and order_total must be provided together')
+        if has_created_at:
+            if not isinstance(data['order_created_at'], str):
+                raise ValueError('invalid order_created_at')
+            try:
+                created_at = datetime.fromisoformat(data['order_created_at'].replace('Z', '+00:00'))
+            except ValueError as exc:
+                raise ValueError('invalid order_created_at') from exc
+            if created_at.tzinfo is None or created_at.utcoffset() is None:
+                raise ValueError('order_created_at must include timezone')
+            if not isinstance(data['order_total'], str):
+                raise ValueError('order_total must be a decimal rubles string')
+            try:
+                parsed_order_total = Decimal(money(data['order_total']))
+                if parsed_order_total < 0:
+                    raise ValueError('invalid order_total')
+            except (ValueError, InvalidOperation) as exc:
+                raise ValueError('invalid order_total') from exc
         items = data.get('items')
         if not isinstance(items, list) or not (0 if data.get('ticket_kind') == 'LOCATION' else 1) <= len(items) <= 100:
             raise ValueError('1..100 items required')
@@ -164,6 +185,40 @@ def customer_number(data):
     return value  # Keep explicitly labelled technical test IDs readable.
 
 
+def discount_dates(data):
+    """Return Moscow-local promotion dates for an eligible original order."""
+    if data.get('type', 'cafe_order') != 'cafe_order' or data.get('ticket_kind', 'NEW') not in ('NEW', 'ADD'):
+        return None
+    if 'order_created_at' not in data or 'order_total' not in data:
+        return None
+    if Decimal(data['order_total']) <= Decimal('2000'):
+        return None
+    created = datetime.fromisoformat(data['order_created_at'].replace('Z', '+00:00'))
+    day = created.astimezone(ZoneInfo('Europe/Moscow')).date()
+    offset = {0: (1, 3), 1: (1, 2), 2: (1, 1)}.get(day.weekday())
+    if offset is None:
+        start = day + timedelta(days=7 - day.weekday())
+        end = start + timedelta(days=3)
+    else:
+        start = day + timedelta(days=offset[0])
+        end = day + timedelta(days=offset[1])
+    return start, end
+
+
+def promotion_lines(data):
+    dates = discount_dates(data)
+    if dates is None:
+        return []
+    start, end = dates
+    def fmt(value, year):
+        return value.strftime('%d.%m') + ('.' + value.strftime('%Y') if year else '')
+    if start == end:
+        valid = fmt(start, True)
+    else:
+        valid = 'с ' + fmt(start, start.year != end.year) + ' по ' + fmt(end, True)
+    return ['−10%', 'НА СЛЕДУЮЩИЙ ЗАКАЗ', 'На всё в кафе СТАРТ', 'при предъявлении этого чека.', 'Действует: ' + valid]
+
+
 def receipt_lines(data, received, reprint=False):
     lines = ['КАФЕ СТАРТ', '']
     if reprint:
@@ -213,6 +268,8 @@ def receipt_lines(data, received, reprint=False):
         if data.get('comment'):
             lines += ['', 'Комментарий:', data['comment']]
     lines += ['', 'Получено: ' + receipt_time(received)]
+    if data['type'] == 'cafe_order':
+        lines += promotion_lines(data)
     return lines
 
 def receipt_bands(data, received, cfg, reprint=False):
@@ -223,7 +280,77 @@ def receipt_bands(data, received, cfg, reprint=False):
     font = ImageFont.truetype(cfg.get('font_path', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'), 24)
     probe = ImageDraw.Draw(Image.new('L', (width, 1), 255))
     number_index = (2 + 2 * bool(reprint) + bool(ticket_caption(data))) if data['type'] == 'cafe_order' else None
-    for index, line in enumerate(receipt_lines(data, received, reprint)):
+    lines = receipt_lines(data, received, reprint)
+    promos = promotion_lines(data)
+    promo_start = len(lines) - len(promos)
+    for index, line in enumerate(lines):
+        if promos and index >= promo_start:
+            continue
+        if promos and index == 0:
+            right_x = int(width * 0.55)
+            promo_width = width - right_x - 8
+            regular_path = cfg.get('font_path', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf')
+            promo_bold = cfg.get('bold_font_path', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')
+            if not Path(promo_bold).exists():
+                promo_bold = regular_path
+            draw = ImageDraw.Draw(Image.new('L', (width, 1), 255))
+            promo_rows = []
+            for promo_index, promo in enumerate(promos):
+                promo_font = ImageFont.truetype(promo_bold if promo_index < 2 else regular_path,
+                                                22 if promo_index == 0 else 15)
+                words = promo.split(' ')
+                buf = ''
+                for word in words:
+                    candidate = (buf + ' ' + word).strip()
+                    if buf and draw.textlength(candidate, font=promo_font) > promo_width:
+                        promo_rows.append((buf, promo_font))
+                        buf = ''
+                    if draw.textlength(word, font=promo_font) > promo_width:
+                        for char in word:
+                            if buf and draw.textlength(buf + char, font=promo_font) > promo_width:
+                                promo_rows.append((buf, promo_font))
+                                buf = ''
+                            buf += char
+                    else:
+                        buf = (buf + ' ' + word).strip()
+                if buf:
+                    promo_rows.append((buf, promo_font))
+            number_text = lines[number_index]
+            bold_path = cfg.get('bold_font_path', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')
+            if not Path(bold_path).exists():
+                bold_path = regular_path
+            number_size = 112
+            number_font = ImageFont.truetype(bold_path, number_size)
+            while number_size > 24 and draw.textlength(number_text, font=number_font) > right_x - 16:
+                number_size -= 2
+                number_font = ImageFont.truetype(bold_path, number_size)
+            left_rows = [(line, font)]
+            if reprint:
+                left_rows.append(('*** ПОВТОР ***', font))
+            caption = ticket_caption(data)
+            if caption:
+                left_rows.append((caption, font))
+            left_rows.append((number_text, number_font))
+            left_height = sum(max(18, row_font.getbbox(text or '0')[3] - row_font.getbbox(text or '0')[1] + 4)
+                              for text, row_font in left_rows) + 8
+            promo_height = sum(max(18, pf.getbbox(txt or '0')[3] - pf.getbbox(txt or '0')[1] + 4)
+                               for txt, pf in promo_rows) + 8
+            header = Image.new('L', (width, max(left_height, promo_height)), 255)
+            hd = ImageDraw.Draw(header)
+            y = 4
+            for text, row_font in left_rows:
+                bounds = row_font.getbbox(text or '0')
+                hd.text((8, y - bounds[1]), text, font=row_font, fill=0)
+                y += max(18, bounds[3] - bounds[1] + 4)
+            y = 4
+            for promo_text, promo_font in promo_rows:
+                bounds = promo_font.getbbox(promo_text or '0')
+                hd.text((right_x, y - bounds[1]), promo_text, font=promo_font, fill=0)
+                y += max(18, bounds[3] - bounds[1] + 2)
+            yield header
+            continue
+        if promos and 0 < index <= number_index:
+            continue
         large = index == number_index
         row_font = font
         if large:
@@ -232,7 +359,8 @@ def receipt_bands(data, received, cfg, reprint=False):
                 bold_path = cfg.get('font_path', bold_path)
             size = 112
             row_font = ImageFont.truetype(bold_path, size)
-            while size > 48 and probe.textlength(line, font=row_font) > width - 16:
+            max_number_width = width * 0.53 if promos else width - 16
+            while size > 48 and probe.textlength(line, font=row_font) > max_number_width:
                 size -= 2
                 row_font = ImageFont.truetype(bold_path, size)
         wrapped = []

@@ -1,5 +1,7 @@
 /* Staff cafe presentation. Order, stock, payment and status handlers are unchanged. */
 body.theme-cafe.cafe-integrated{--ink:#172c47;--paper:#f5f4ef;--accent:#852a44;--workspace-accent:#852a44;--line:#dfe2e4;--muted:#66748a;--pos-ink:var(--ink);--pos-paper:var(--paper);--pos-line:var(--line);font-size:14px;background:var(--paper);color:var(--ink)}
+body.cafe-integrated #cabinet .tabs button[data-tab="orders"]{box-sizing:border-box;min-height:44px;padding:8px 14px;border:1px solid #852a44;border-radius:5px;background:#fff;color:#852a44;font-weight:700;white-space:nowrap}
+body.cafe-integrated #cabinet .tabs button[data-tab="orders"].selected{background:#852a44;color:#fff}
 body.cafe-integrated main,body.cafe-integrated.pos-mode main{max-width:none;padding:10px 12px 20px}
 body.cafe-integrated .page-heading{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px!important;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 body.cafe-integrated #cabinet{min-width:0}
@@ -108,6 +110,29 @@ body.cafe-integrated #compose .menu-cat{scroll-margin-top:calc(var(--desk-chrome
 @media(min-width:1280px){body.cafe-integrated #compose #menu-list{grid-template-columns:repeat(4,minmax(0,1fr))}}
 
 /* Immediate handoff, kitchen orders, manual payment, then guest account. */
+body.cafe-integrated #orders>.order-search-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+body.cafe-integrated #orders>#order-search{display:block;width:100%;min-height:46px;margin:4px 0 8px;padding:10px 12px;border:1px solid var(--line);border-radius:5px;background:#fff;font-size:16px}
+body.cafe-integrated #orders .extra-filters{margin:0 0 8px}
+body.cafe-integrated #orders .extra-filters summary{min-height:44px;padding:10px 4px;color:var(--ink);font-size:14px;font-weight:650}
+body.cafe-integrated #orders .extra-filters .filters{gap:8px}
+body.cafe-integrated #orders .extra-filters label{font-size:12px}
+body.cafe-integrated #orders .extra-filters input,body.cafe-integrated #orders .extra-filters select{min-height:44px;font-size:16px}
+body.cafe-integrated #orders .payment-help{margin:3px 0 8px;font-size:12px;color:var(--muted)}
+body.cafe-integrated #orders .payment-help summary{min-height:36px;padding:8px 2px;cursor:pointer}
+body.cafe-integrated #orders .payment-help p{margin:4px 0 8px}
+body.cafe-integrated #orders .order-line{grid-template-columns:minmax(0,1fr) minmax(92px,112px);gap:5px;padding:3px 0}
+body.cafe-integrated #orders .order-line:has(.order-primary){grid-template-columns:minmax(0,1fr) minmax(112px,144px)}
+body.cafe-integrated #orders .order-row{min-height:0;padding:7px 8px;font-size:13px;line-height:1.35}
+body.cafe-integrated #orders .order-row b,body.cafe-integrated #orders .order-row strong{font-size:14px;line-height:1.3}
+body.cafe-integrated #orders .order-row small{white-space:normal;overflow-wrap:anywhere;font-size:12px}
+body.cafe-integrated #orders .order-row small:last-child{overflow:visible;text-overflow:clip}
+body.cafe-integrated #orders .order-row .order-comments{grid-column:1/-1;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.35;color:#3f4f58}
+body.cafe-integrated #orders .order-actions{gap:4px}
+body.cafe-integrated #orders .order-actions .order-next{min-height:44px;padding:6px;font-size:13px;line-height:1.25;white-space:normal;overflow-wrap:anywhere}
+body.cafe-integrated #orders .order-actions .order-primary{background:#246b49;color:#fff;font-weight:700}
+body.cafe-integrated #orders .order-actions .order-secondary{border:1px solid #9aa7a0;background:#fff;color:var(--ink);font-weight:600}
+body.cafe-integrated #orders .terminal-issues{border-radius:5px}
+@media(max-width:520px){body.cafe-integrated #orders .order-line,body.cafe-integrated #orders .order-line:has(.order-primary){grid-template-columns:minmax(0,1fr) minmax(92px,104px)}body.cafe-integrated #orders .order-row{padding:6px;font-size:12px}body.cafe-integrated #orders .order-row b,body.cafe-integrated #orders .order-row strong{font-size:13px}body.cafe-integrated #orders .order-actions .order-next{font-size:12px;padding:5px}}
 body.cafe-integrated #cart-dialog .cart-footer #checkout-button,
 body.cafe-integrated #cart-dialog .cart-footer #prepare-order{order:0;min-height:48px!important;padding:10px 6px;background:var(--accent);border-color:var(--accent);color:#fff;font-size:14px!important;font-weight:700;white-space:normal}
 body.cafe-integrated #cart-dialog .cart-footer #cash-deliver-order,

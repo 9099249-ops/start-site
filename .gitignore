@@ -22,6 +22,9 @@ tmp/
 output/
 outputs/
 *.log
+# Local browser captures can contain operational/customer data.
+reports/evidence/
+reports/tools/ux-browser-audit.mjs
 *.zip
 *.tgz
 *.tar.gz

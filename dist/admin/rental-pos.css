@@ -439,3 +439,25 @@ body.theme-rental.pos-has-utility .desk-footer { display: none; }
   body.theme-rental #workspace:has(#rental-payments:not([hidden])) #active-panel { grid-row: 5; }
   body.theme-rental #desk-results { top: 56px; }
 }
+
+body.theme-rental #active-list .rental-main .rental-timer {
+  min-width: 0;
+  font-size: 16px !important;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 700px) {
+  body.theme-rental .desk-tabs button {
+    flex: 1 1 0;
+    min-width: 0;
+    height: auto;
+    white-space: normal;
+    line-height: 1.1;
+    overflow-wrap: normal;
+  }
+
+  body.theme-rental #active-list .rental-main .rental-timer {
+    font-size: 14px !important;
+  }
+}

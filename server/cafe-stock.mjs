@@ -1,11 +1,13 @@
 import {readFileSync} from 'node:fs';
 import {InventoryStore,quantity,quantityText} from './inventory.mjs';
+import {buildConsumablesPlan} from './cafe-consumables-plan.mjs';
 const fail=(message,status=409,extra={})=>{throw Object.assign(new Error(message),{status,...extra});};
 export class CafeStock{
  constructor(cafe){this.cafe=cafe;this.db=cafe.db;this.inventory=new InventoryStore(cafe.admin);this.db.exec(readFileSync(new URL('./migrations/003-cafe-stock.sql',import.meta.url),'utf8'));}
  recipe(itemId,component){const r=this.db.prepare('SELECT * FROM cafe_recipes WHERE item_id=? AND component=?').get(itemId,component);return r?{...r,ingredients:JSON.parse(r.body)}:null;}
- config(u){if(u?.role!=='admin')fail('Доступно только admin.',403);return {items:this.cafe.catalog().items,groups:this.cafe.catalog().groups,recipes:this.db.prepare('SELECT * FROM cafe_recipes').all().map(r=>({...r,ingredients:JSON.parse(r.body)})),inventory:this.inventory.catalog(u).items};}
- save(b,u){if(u?.role!=='admin')fail('Доступно только admin.',403);const item=this.cafe.catalog().items.find(i=>i.id===b.itemId);if(!item)fail('Блюдо не найдено.',404);const components=['base',...item.variants.map(v=>'variant:'+v.id),...this.cafe.catalog().groups.filter(g=>item.groupIds.includes(g.id)).flatMap(g=>g.options.map(o=>'option:'+o.id))];if(!components.includes(b.component)||!Array.isArray(b.ingredients)||b.ingredients.length>30||(!b.ingredients.length&&!b.component.startsWith('option:')))fail('Укажите расход на одну порцию.',400);
+ provenance(){if(!this.db.prepare("SELECT name FROM sqlite_master WHERE name='cafe_audit'").get())return [];return this.db.prepare("SELECT body FROM cafe_audit WHERE action='consumables_autofill' ORDER BY id DESC LIMIT 2000").all().map(r=>JSON.parse(r.body));}
+ config(u){if(u?.role!=='admin')fail('Доступно только admin.',403);const catalog=this.cafe.catalog(),inventory=this.inventory.catalog(u),data={items:catalog.items,categories:catalog.categories,groups:catalog.groups,units:inventory.units,recipes:this.db.prepare('SELECT * FROM cafe_recipes').all().map(r=>({...r,ingredients:JSON.parse(r.body)})),inventory:inventory.items,provenance:this.provenance()};return {...data,consumablesPlan:buildConsumablesPlan(data)};}
+ save(b,u,provenance=null){if(u?.role!=='admin')fail('Доступно только admin.',403);const item=this.cafe.catalog().items.find(i=>i.id===b.itemId);if(!item)fail('Блюдо не найдено.',404);const components=['base',...item.variants.map(v=>'variant:'+v.id),...this.cafe.catalog().groups.filter(g=>item.groupIds.includes(g.id)).flatMap(g=>g.options.map(o=>'option:'+o.id))];if(!components.includes(b.component)||!Array.isArray(b.ingredients)||b.ingredients.length>30||(!b.ingredients.length&&!b.component.startsWith('option:')))fail('Укажите расход на одну порцию.',400);
  const option=b.component.startsWith('option:')?this.cafe.catalog().groups.filter(g=>item.groupIds.includes(g.id)).flatMap(g=>g.options).find(o=>'option:'+o.id===b.component):null;if(option&&((option.id==='coffee_sugar-0'&&option.name==='Без сахара')||(option.id==='coffee_milk-0'&&option.name==='Обычное'))&&b.ingredients.length)fail('Эта опция не добавляет ингредиенты. Кофе и обычное молоко укажите только в основной порции.',400);
  return this.cafe.transaction(()=>{const old=this.recipe(b.itemId,b.component);if(b.revision!==(old?.revision??-1))fail('Рецептура изменена. Обновите страницу.');const seen=new Set(),replaced=new Set(),ingredients=b.ingredients.map(i=>{
   if(!i||typeof i!=='object'||Array.isArray(i))fail('Проверьте товар и расход.',400);
@@ -17,7 +19,7 @@ export class CafeStock{
    replaced.add(i.replacesId);ingredient.replacesId=i.replacesId;
   }
   return ingredient;
- });this.db.prepare('INSERT INTO cafe_recipes VALUES(?,?,?,0) ON CONFLICT(item_id,component) DO UPDATE SET body=excluded.body,revision=revision+1').run(b.itemId,b.component,JSON.stringify(ingredients));const after=this.recipe(b.itemId,b.component);this.cafe.audit(u,'recipe',{before:old,after});return after;});}
+ });this.db.prepare('INSERT INTO cafe_recipes VALUES(?,?,?,0) ON CONFLICT(item_id,component) DO UPDATE SET body=excluded.body,revision=revision+1').run(b.itemId,b.component,JSON.stringify(ingredients));const after=this.recipe(b.itemId,b.component);this.cafe.audit(u,'recipe',{before:old,after});if(provenance)this.cafe.audit(u,'consumables_autofill',{itemId:b.itemId,component:b.component,recipeRevision:after.revision,additions:provenance.additions});return after;});}
  requirements(line,recipeFor=(itemId,component)=>this.recipe(itemId,component)){
   if(line.custom===true)return [];
   const unconfigured=()=>fail(`«${line.name}»: расход ещё не настроен. Обратитесь к администратору.`,409,{stockCode:'UNCONFIGURED',itemId:line.itemId,available:0});
@@ -79,7 +81,11 @@ export class CafeStock{
   return {variants:entries,options:optionEntries,...best(entries),defaultAvailable:Math.max(0,...entries.map(e=>e.defaultAvailable))};
  }
  menu(d){d.stockRevision=this.db.prepare('SELECT coalesce(max(id),0) n FROM inventory_transactions').get().n+':'+this.db.prepare('SELECT coalesce(sum(revision+1),0) n FROM cafe_recipes').get().n;
-  const recipes=new Map(this.db.prepare('SELECT item_id,component,body FROM cafe_recipes').all().map(r=>[r.item_id+'\0'+r.component,{ingredients:JSON.parse(r.body)}])),stocks=new Map();
+  const recipeRows=this.db.prepare('SELECT item_id,component,body,revision FROM cafe_recipes').all().map(r=>({...r,ingredients:JSON.parse(r.body)}));
+  const recipes=new Map(recipeRows.map(r=>[r.item_id+'\0'+r.component,r])),stocks=new Map();
+  const inventory=this.db.prepare('SELECT i.*,u.name unit,c.name category FROM inventory_items i JOIN inventory_units u ON u.id=i.unit_id JOIN inventory_categories c ON c.id=i.category_id').all();
+  const plan=buildConsumablesPlan({...d,recipes:recipeRows,inventory,provenance:this.provenance()});
+  const incomplete=new Set(plan.rows.filter(r=>r.itemId&&(r.status!=='existing'||r.source==='assumed'||r.reason)).map(r=>r.itemId));
   const context={recipeFor:(id,key)=>recipes.get(id+'\0'+key),stockFor:id=>{if(!stocks.has(id))stocks.set(id,this.inventory.row(id));return stocks.get(id);}};
-  for(const i of d.items)i.stock=this.availability(i,d.groups,context);return d;}
+  for(const i of d.items)i.stock={...this.availability(i,d.groups,context),accountingIncomplete:incomplete.has(i.id)};return d;}
 }

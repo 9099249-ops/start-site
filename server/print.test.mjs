@@ -84,6 +84,21 @@ check('report access does not grant employees cafe reprints or salary settings',
  assert.equal(f.a.db.prepare("SELECT count(*) n FROM print_audit WHERE action='reprint'").get().n,1);
 });
 check('cafe NEW and ADD produce distinct immutable tickets, duplicate create does not reprint',f=>{const {c,item,body}=cafe(f),r=c.create(body,u,'test',at('12:00'));c.create(body,u,'test',at('12:01'));const first=f.p.cafeJobs(r.id,u).jobs[0];assert.equal(first.payload.order_source,'admin');assert.equal(first.payload.items.length,1);assert.equal(first.payload.items[0].price,rubles(item.priceCents));assert.equal(first.payload.fulfillment,'Заберут в кафе');const b={id:r.id,revision:r.revision,requestId:randomUUID(),items:body.items,expectedTotalCents:item.priceCents};c.append(b,u,at('12:02'));c.append(b,u,at('12:03'));const jobs=f.p.cafeJobs(r.id,u).jobs;assert.equal(jobs.length,2);assert.equal(jobs[1].payload.ticket_kind,'ADD');assert.equal(jobs[1].payload.items.length,1);assert.equal(jobs[1].payload.total,first.payload.total);assert.ok(!('phone' in first.payload));});
+check('promotion metadata preserves original creation time, cumulative total and reprint snapshot',f=>{
+ const {c,item,body}=cafe(f),r=c.create(body,u,'test',at('12:00'));
+ const first=f.p.cafeJobs(r.id,u).jobs[0],original=structuredClone(first.payload);
+ assert.equal(first.payload.order_created_at,new Date(r.created).toISOString());
+ assert.equal(first.payload.order_total,rubles(r.totalCents));
+ c.append({id:r.id,revision:r.revision,requestId:randomUUID(),items:body.items,expectedTotalCents:item.priceCents},u,at('12:02')+86400000);
+ const added=f.p.cafeJobs(r.id,u).jobs[1];
+ assert.equal(added.payload.order_created_at,first.payload.order_created_at);
+ assert.equal(added.payload.order_total,rubles(r.totalCents+item.priceCents));
+ assert.equal(added.payload.total,first.payload.total);
+ f.p.poll();f.p.events({events:[event(first,'printed')]});
+ const repeated=f.p.reprint({jobId:first.id,reason:'Тест неизменяемого срока'},u,at('12:00')+14*86400000).job;
+ assert.deepEqual(repeated.payload,original);
+ assert.equal(repeated.payload_hash,first.payload_hash);
+});
 check('cancel before delivery removes queued ticket, after offered emits cancellation',f=>{const {c,body}=cafe(f),r=c.create(body,u,'test',at('12:00'));c.status({id:r.id,revision:r.revision,status:'CANCELLED'},u);assert.equal(f.p.cafeJobs(r.id,u).jobs[0].status,'cancelled');assert.equal(f.p.poll().jobs.length,0);const next=c.create({...body,requestId:randomUUID()},u,'test',at('12:01'));f.p.poll();c.status({id:next.id,revision:next.revision,status:'CANCELLED'},u);const jobs=f.p.cafeJobs(next.id,u).jobs;assert.equal(jobs.length,2);assert.equal(jobs[1].payload.ticket_kind,'CANCELLED');});
 check('queue failure rolls back cafe order and stock consumption',f=>{const {c,body,stock}=cafe(f);const before=c.stock.inventory.row(stock.id).current_milli;f.p.enqueue=()=>{throw Error('queue unavailable');};assert.throws(()=>c.create(body,u,'test',at('12:00')),/queue unavailable/);assert.equal(f.a.db.prepare('SELECT count(*) n FROM cafe_orders').get().n,0);assert.equal(c.stock.inventory.row(stock.id).current_milli,before);});
 check('disabled integration does not backfill historical orders',f=>{const {c,body}=cafe(f);f.p.env.PRINT_ENABLED='false';const r=c.create(body,u,'test',at('12:00'));f.p.env.PRINT_ENABLED='true';c.create(body,u,'test',at('12:00'));assert.equal(f.p.cafeJobs(r.id,u).jobs.length,0);assert.equal(f.p.poll().jobs.length,0);});

@@ -29,7 +29,7 @@ test('Quick extension keeps payments and has revision conflict protection and au
  assert.equal(s.db.prepare('SELECT amount FROM payments WHERE rental_id=?').get(id).amount,100000);
  assert.equal(s.db.prepare('SELECT count(*) n FROM rental_changes').get().n,1);
  assert.throws(()=>extendRental(s,fleet,{id,revision:1,minutes:30},{id:3,role:'waiter'},now),/роли/);
- s.returned(id,u,now+2000);assert.throws(()=>extendRental(s,fleet,{id,revision:2,minutes:30},u,now+3000),/изменена/);
+ s.returned(id,u,now+2000,1,{confirmed:true,method:'cash',amountCents:50000});assert.throws(()=>extendRental(s,fleet,{id,revision:2,minutes:30},u,now+3000),/изменена/);
 });
 test('Extension cannot overlap a confirmed booking; overdue stock remains occupied',t=>{
  const {s,u,create}=fixture(t),id=create({equipment:'boat'});
@@ -77,7 +77,8 @@ test('Desk HTTP handlers require existing session, role and same-origin JSON; re
  assert.equal((await call('extend',{id,revision:0,minutes:30})).status,200);
  assert.equal((await call('extend',{id,revision:0,minutes:30})).status,409);
  assert.equal((await call('search?q=8822')).result.rentals[0].id,id);
- const back=await call('return',{id});assert.equal(back.status,200);assert.equal(back.result.canUndo,false);
+ assert.equal((await call('return',{id})).status,409);
+ const back=await call('return',{id,revision:1,payment:{confirmed:true,method:'cash',amountCents:50000}});assert.equal(back.status,200);assert.equal(back.result.canUndo,false);
  assert.equal((await call('undo-return',{id,revision:back.result.revision,returnedAt:back.result.returnedAt})).status,409);
  assert.equal(s.db.prepare('SELECT returned FROM rentals WHERE id=?').get(id).returned,back.result.returnedAt);
  s.db.prepare("UPDATE admin_users SET role='waiter' WHERE id=?").run(u.id);

@@ -1,7 +1,9 @@
 import {CafeBoard,cafeBoardHandler} from './cafe-board.mjs';
 import {serveWorkspace} from './admin-workspace.mjs';
+import {configureUxAudit,withUxAudit} from './ux-audit-integration.mjs';
 import {GuestBills} from './guest-bills.mjs';
 import {deskHealthHandler} from './desk-health.mjs';
+import {voiceEventsHandler} from './voice-events.mjs';
 import {serveAdminAsset} from './admin-assets.mjs';
 import {AqsiConnection,aqsiHandler} from './aqsi.mjs';
 import {AqsiRental} from './aqsi-rental.mjs';
@@ -29,6 +31,8 @@ const root = path.resolve(fileURLToPath(new URL('../dist/',import.meta.url)));
 const port = Number(process.env.PORT || 4173);
 const origin = process.env.SITE_ORIGIN || `http://127.0.0.1:${port}`;
 const adminStore=process.env.BOOKING_DB?new AdminStore(process.env.BOOKING_DB):null;
+const uxAudit=configureUxAudit(process.env,root);
+if(adminStore){adminStore.uxAudit=uxAudit;const tick=()=>uxAudit.tick().catch(()=>console.error('UX audit report unavailable'));setInterval(tick,60000).unref();void tick();}
 const aqsi=adminStore?new AqsiConnection(path.join(path.dirname(process.env.BOOKING_DB),'aqsi-connection.json')):null;
 const aqsiPilot=adminStore?new AqsiPilot(adminStore,aqsi):null;
 const handleAqsi=aqsiHandler(aqsi,adminStore,origin,aqsiPilot);
@@ -37,6 +41,7 @@ const printStore=adminStore?new PrintStore(adminStore):null;
 if(adminStore)adminStore.printStore=printStore;
 const handlePrint=printHandler(printStore,adminStore,origin);
 const handleDeskHealth=deskHealthHandler(adminStore,printStore,aqsi);
+const handleVoiceEvents=voiceEventsHandler(adminStore);
 const contentStore=adminStore?new ContentStore(adminStore.db,path.join(path.dirname(process.env.BOOKING_DB),'media')):null;
 const handleContent=contentHandler(contentStore,adminStore,origin,path.join(root,'index.html'));
 const handleWorkforce=workforceHandler(adminStore?.workforce,adminStore,origin);
@@ -65,6 +70,7 @@ const types = {'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-
 http.createServer(async(req,res)=>{
   try {
     const url = new URL(req.url,origin);
+    if(await handleVoiceEvents(req,res,url))return;
     if(await handleDeskHealth(req,res,url))return;
     if(await handleAqsi(req,res,url))return;
     if(await handlePrint(req,res,url))return;
@@ -75,10 +81,11 @@ http.createServer(async(req,res)=>{
     if(url.pathname==='/admin/purchase'){res.writeHead(302,{Location:'/admin/purchase/'});res.end();return;}
     if(['/cafe','/menu.html','/admin/cafe'].includes(url.pathname)){res.writeHead(302,{Location:url.pathname.startsWith('/admin')?'/admin/cafe/':'/cafe/'+url.search});res.end();return;}
     if(url.pathname==='/cafe/'&&url.searchParams.get('staff')==='1'){const append=url.searchParams.get('append');res.writeHead(302,{Location:'/admin/cafe/'+(append&&/^\d+$/.test(append)?'?append='+append:'')+'#new','Cache-Control':'no-store'});res.end();return;}
-    if(await serveWorkspace(req,res,url,root))return;
+    if(await serveWorkspace(req,res,url,root,html=>withUxAudit(html,adminStore?.uxAudit)))return;
     if(url.pathname==='/cafe/'||/^\/cafe\/t\/[a-f0-9]{48}$/.test(url.pathname)||url.pathname==='/admin/cafe/'){
       if(!['GET','HEAD'].includes(req.method))return json(res,405,{error:'method'});
       const staff=url.pathname.startsWith('/admin');let html=await readFile(path.join(root,staff?'admin/cafe.html':'cafe.html'),'utf8');
+      if(staff)html=withUxAudit(html,adminStore?.uxAudit);
       if(!staff&&contentStore){html=withSiteChrome(html,contentStore.live());if(!url.searchParams.has('staff'))html=html.replace('</head>',analyticsTag()+'</head>');}
       res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','X-Content-Type-Options':'nosniff',...(staff||url.pathname.includes('/t/')||url.searchParams.has('staff')?{'X-Robots-Tag':'noindex, nofollow'}:{})});res.end(req.method==='HEAD'?undefined:html);return;
     }
@@ -113,6 +120,6 @@ http.createServer(async(req,res)=>{
     const file=path.resolve(root,'.'+(pathname==='/'?'/index.html':['/admin','/admin/'].includes(pathname)?'/admin/index.html':['/admin/settings','/admin/settings/'].includes(pathname)?'/admin/settings.html':pathname==='/admin/aqsi/'?'/admin/aqsi.html':pathname==='/admin/schedule/'?'/admin/schedule.html':pathname==='/admin/accounts/'?'/admin/accounts.html':pathname==='/admin/tasks/'?'/admin/tasks.html':pathname==='/admin/purchase/'?'/admin/purchase.html':pathname==='/admin/workforce/'?'/admin/workforce.html':pathname==='/admin/cafe-stock/'?'/admin/cafe-stock.html':pathname));
     if(!file.startsWith(root+path.sep) || !types[path.extname(file)] || pathname.split('/').some(p=>p.startsWith('.')))return json(res,404,{error:'not_found'});
     if(await serveAdminAsset(req,res,file,url,types[path.extname(file)]))return;
-    const data=await readFile(file);res.writeHead(200,{'Content-Type':types[path.extname(file)],'X-Content-Type-Options':'nosniff',...(pathname.startsWith('/assets/')?{'Cache-Control':'public, max-age=86400'}:{}),...(pathname.startsWith('/admin')?{'Cache-Control':'no-store','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"}:{})});res.end(req.method==='HEAD'?undefined:data);
+    let data=await readFile(file);if(pathname.startsWith('/admin/')&&path.extname(file)==='.html')data=withUxAudit(data.toString('utf8'),adminStore?.uxAudit);res.writeHead(200,{'Content-Type':types[path.extname(file)],'X-Content-Type-Options':'nosniff',...(pathname.startsWith('/assets/')?{'Cache-Control':'public, max-age=86400'}:{}),...(pathname.startsWith('/admin')?{'Cache-Control':'no-store','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"}:{})});res.end(req.method==='HEAD'?undefined:data);
   }catch{if(!res.headersSent)json(res,404,{error:'not_found'});else res.end();}
 }).listen(port,'127.0.0.1',()=>console.log(`START local server: ${origin}; Telegram configured: ${ready()}`));
