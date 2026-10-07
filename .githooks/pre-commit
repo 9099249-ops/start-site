@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+branch=$(git symbolic-ref --quiet --short HEAD || true)
+if [ "$branch" = main ] || [ -z "$branch" ]; then
+  echo 'START: create a task branch before committing; main and detached HEAD are blocked.' >&2
+  exit 1
+fi
+git diff --cached --name-only --diff-filter=ACMR | while IFS= read -r name; do
+  case "$name" in
+    .env.example) ;;
+    .env|.env.*|*/.env|*/.env.*|*.sqlite|*.sqlite-*|*.db|*.db-*|*.key|*.pem|*.pfx|*.p12|*.tar.gz|*.tgz|*.zip|backups/*|site-backups/*|start-print-agent/config.json)
+      echo "START: private/runtime file is staged: $name" >&2
+      exit 1
+      ;;
+  esac
+done
