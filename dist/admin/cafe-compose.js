@@ -19,7 +19,7 @@ window.openCafeComposer=()=>loading||(loading=(async()=>{
   const contact=host.querySelector('#checkout-contact'),timing=form.elements.timing.closest('.cafe-form-grid'),comment=form.elements.comment.closest('label');
   extra.append(contact,timing,comment);form.querySelector('#checkout-summary').before(extra);
   host.querySelector('#clear-cart').textContent='Сбросить';host.querySelector('#clear-cart').setAttribute('aria-label','Сбросить заказ');
-  const script=document.createElement('script');script.src='/cafe.js?v=consumables-20261006-1';
+  const script=document.createElement('script');script.src='/cafe.js?v=inactive-variants-20261008-1';
   await new Promise((resolve,reject)=>{script.onload=resolve;script.onerror=()=>reject(Error('Не удалось загрузить оформление заказа.'));document.head.append(script);});
   if(await window.cafeComposerReady===false)throw Error('Не удалось загрузить меню. Нажмите «Новый заказ», чтобы повторить.');
   const groups=document.createElement('script');groups.src='/admin/cafe-menu-groups.js?v=staff-menu-groups-20261005';

@@ -43,6 +43,6 @@ test('A clamped mobile category stays selected even above the final category',()
 test('The desktop rail uses its button height and mobile keeps all categories wrapped in view',()=>{
  assert.match(css,/\.menu-categories\{[^}]*height:auto;max-height:var\(--categories-available-height/);
  assert.match(css,/@media\(max-width:759px\)\{[\s\S]*?grid-template-columns:repeat\(3,minmax\(0,1fr\)\)[\s\S]*?overflow:visible!important/);
- assert.match(html,/cafe-compose\.js\?v=quick-sale-block-20261005-3/);
+ assert.match(html,/cafe-compose\.js\?v=inactive-variants-20261008-1/);
  assert.match(html,/cafe-compose\.css\?v=staff-menu-rail-20261005-2/);
 });

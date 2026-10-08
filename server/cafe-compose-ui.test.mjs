@@ -103,8 +103,20 @@ test('Staff draft baskets never borrow a new order, another append, or another u
 });
 
 test('Optional coffee is quick, required choices and the public menu keep the dish dialog',()=>{
- const f=fixture();assert.equal(f.api.quickItem(item),true);const required=structuredClone(catalog);required.groups[0].min=1;f.api.seed({menu:required});assert.equal(f.api.quickItem(item),false);assert.equal(f.api.quickItem({...item,variants:[{id:'large'}]}),false);
+ const f=fixture();assert.equal(f.api.quickItem(item),true);assert.equal(f.api.quickItem({...item,variants:[{id:'large',active:false}]}),true);const required=structuredClone(catalog);required.groups[0].min=1;f.api.seed({menu:required});assert.equal(f.api.quickItem(item),false);assert.equal(f.api.quickItem({...item,variants:[{id:'large',active:true}]}),false);
  assert.equal(fixture({staffMode:false}).api.quickItem(item),false);
+});
+
+test('Inactive variants quick-add without opening the dish dialog and check stock once',async()=>{
+ const menu=structuredClone(catalog),coffee={...item,variants:[{id:'large',active:false}]};menu.items=[coffee];const f=fixture();f.api.seed({menu});assert.equal(f.api.quickItem(coffee),true);await f.api.quickAdd(coffee,f.get('#add'));assert.equal(f.get('#dish-dialog').open,false);assert.equal(f.api.state().cart.length,1);assert.equal(f.requests.length,1);assert.match(f.requests[0].url,/stock-check$/);
+});
+
+test('Inactive variants do not add a phantom required choice beside modifiers',async()=>{
+ const menu=structuredClone(milkMenu());menu.items[0].variants=[{id:'large',active:false}];const f=fixture();f.api.seed({menu});assert.equal(f.api.quickItem(menu.items[0]),true);f.api.openDish(menu.items[0]);assert.equal(f.get('#dish-options').querySelectorAll('input').some(x=>x.name==='variant'),false);assert.ok(f.get('#dish-options').querySelectorAll('input').some(x=>x.name==='milk'));assert.equal(f.get('#dish-add').disabled,false);await f.submitDish();assert.equal(f.api.state().cart.length,1);assert.equal(f.requests.length,1);
+});
+
+test('An active variant still requires selection before the dish can be added',async()=>{
+ const menu=structuredClone(catalog);menu.items[0].variants=[{id:'large',name:'Большой',priceCents:0,active:true}];menu.items[0].stock={defaultAvailable:4,variants:[{variantId:'large',available:4,configured:true}]};const f=fixture();f.api.seed({menu});assert.equal(f.api.quickItem(menu.items[0]),false);f.api.openDish(menu.items[0]);assert.equal(f.get('#dish-add').disabled,true);await f.submitDish();assert.equal(f.requests.length,0);assert.match(f.get('#dish-stock-error').textContent,/Выберите доступный вариант/);
 });
 
 test('The sugar editor has one clear no-sugar choice and releases the mobile sale button',async()=>{
@@ -214,7 +226,7 @@ test('Available default cappuccino stays quick while zero-stock sugar and milk o
 });
 
 test('When ordinary milk is empty, a replacement must be chosen explicitly before adding',async()=>{
- const f=fixture(),menu=milkMenu(0);f.api.seed({menu});const coffee=menu.items[0];assert.equal(f.api.quickItem(coffee),false);f.api.openDish(coffee);
+ const f=fixture(),menu=milkMenu(0);menu.items[0].variants=[{id:'large',active:false}];f.api.seed({menu});const coffee=menu.items[0];assert.equal(f.api.quickItem(coffee),false);f.api.openDish(coffee);assert.equal(f.get('#dish-options').querySelectorAll('input').some(x=>x.name==='variant'),false);
  let inputs=f.get('#dish-options').querySelectorAll('input');assert.equal(inputs.some(x=>x.name==='milk'&&['ordinary',''].includes(x.value)),false);assert.equal(f.get('#dish-add').disabled,true);await f.submitDish();assert.equal(f.requests.length,0);
  chooseDishInput(f,'milk','oat');assert.equal(f.get('#dish-add').disabled,false);assert.equal(f.get('#dish-add').textContent,'Добавить · 450 ₽');await f.submitDish();assert.equal(f.api.state().cart[0].optionIds.includes('oat'),true);assert.equal(f.api.state().cart[0].optionIds.includes('ordinary'),false);
 });
