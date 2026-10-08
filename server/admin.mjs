@@ -223,7 +223,7 @@ export function adminHandler(store,origin){return async(req,res,url)=>{
   if(url.pathname==='/api/admin/fleet-order'&&req.method==='GET'){if(user.role!=='admin')return reply(403,{error:'Только администратор.'});return reply(200,fleetOrder(store,fleet));}
   if(url.pathname==='/api/admin/fleet-order'&&req.method==='POST')return reply(200,saveFleetOrder(store,fleet,b,user));
   if(url.pathname==='/api/admin/schedule'&&req.method==='GET')return reply(200,store.schedule.list(url.searchParams.get('week'),user));
-  if(url.pathname==='/api/admin/schedule'&&req.method==='POST')return reply(200,store.schedule.save(b,user));
+  if(url.pathname==='/api/admin/schedule'&&req.method==='POST'){const result=store.schedule.save(b,user);store.sms?.staffReminders?.wake?.();return reply(200,result);}
   if(url.pathname==='/api/admin/accounts'&&req.method==='GET')return reply(200,{items:store.accounts.list(user)});
   if(url.pathname==='/api/admin/accounts/password'&&req.method==='POST')return reply(200,store.accounts.password(b,user));
   if(url.pathname==='/api/admin/accounts/archive'&&req.method==='POST')return reply(200,store.accounts.archive(b,user));
