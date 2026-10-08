@@ -3,6 +3,7 @@ import {createHash} from 'node:crypto';
 import {fleet} from './admin.mjs';
 import {defaults} from './content.mjs';
 import {bookingText} from './telegram.mjs';
+import {StaffShiftReminders,dailySmsUsed} from './staff-sms.mjs';
 
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 export function sanitizeSmsUrl(value){return String(value??'').trim().replace(/^https?:\/\//i,'');}
@@ -37,6 +38,7 @@ export class SmsStore {
    CREATE TABLE IF NOT EXISTS discount_limits(key TEXT PRIMARY KEY,count INTEGER NOT NULL,expires INTEGER NOT NULL);`);
   this.db.prepare('INSERT OR IGNORE INTO sms_settings(id,body) VALUES(1,?)').run(JSON.stringify({enabled:false,promoEnabled:true,remindersEnabled:true,sign:'СТАРТ',YANDEX_NAVIGATOR_URL:'https://yandex.ru/navi/org/start/239145365381',BOOKING_LATE_CANCEL_MINUTES:15,dailyLimit:10,promoCode:'АЭЛИТА',promoAmount:100}));
   const stored=this.db.prepare('SELECT body FROM sms_settings WHERE id=1').get();let migrated;try{migrated=JSON.parse(stored.body);}catch{migrated={};}let changed=false;if(['SMS Aero','START'].includes(migrated.sign)){migrated.sign='СТАРТ';changed=true;}if(['AELITA','START10','PROMO10','TEST'].includes(migrated.promoCode)){migrated.promoCode='АЭЛИТА';changed=true;}if(changed)this.db.prepare('UPDATE sms_settings SET body=?,revision=revision+1 WHERE id=1').run(JSON.stringify(migrated));
+  this.staffReminders=new StaffShiftReminders(admin,{phone,prepareSmsText,settings:()=>this.settings(),service:()=>new SmsService(this.env)});
   admin.sms=this;this.sync();
  }
  settings(){const row=this.db.prepare('SELECT * FROM sms_settings WHERE id=1').get();return {...JSON.parse(row.body),STATION_PHONE:this.content?.live().phone||defaults.phone,revision:row.revision,configured:Boolean(this.env.SMSAERO_EMAIL&&this.env.SMSAERO_API_KEY),transportEnabled:this.env.SMS_ENABLED==='true'};}
@@ -103,7 +105,7 @@ export class SmsStore {
     if((j.kind==='promo'&&!s.promoEnabled)||(j.kind==='reminder'&&!s.remindersEnabled))continue;
     // Claim and daily quota reservation are one SQLite transaction, safe across workers.
     this.db.exec('BEGIN IMMEDIATE');let message;
-    try{const count=this.db.prepare("SELECT count(*) n FROM sms_jobs WHERE claimed_at>=? AND status IN ('sending','unknown','accepted','delivered','failed')").get(Date.parse(day(now)+'T00:00:00+03:00')).n;if(count>=s.dailyLimit){this.db.exec('COMMIT');break;}
+    try{const count=dailySmsUsed(this.db,now);if(count>=s.dailyLimit){this.db.exec('COMMIT');break;}
      message=this.message(j);if(!message||j.kind==='reminder'&&j.booking_start<=now){this.db.prepare("UPDATE sms_jobs SET status='cancelled',cancel_reason='expired' WHERE id=? AND status IN ('scheduled','retry')").run(j.id);this.db.exec('COMMIT');continue;}
      const claim=this.db.prepare("UPDATE sms_jobs SET status='sending',attempts=attempts+1,claimed_at=?,payload=?,phone=? WHERE id=? AND status IN ('scheduled','retry')").run(now,message.text,message.number,j.id);this.db.exec('COMMIT');if(!claim.changes)continue;
     }catch(e){this.db.exec('ROLLBACK');throw e;}

@@ -17,6 +17,7 @@ import {CafeStore,cafeHandler} from './cafe.mjs';
 import {analyticsTag} from './analytics.mjs';
 import {withSiteChrome} from './site-shell.mjs';
 import {SmsStore,smsHandler} from './sms.mjs';
+import {staffSmsHandler,startStaffSmsWorker} from './staff-sms.mjs';
 import http from 'node:http';
 import {ContentStore,contentHandler} from './content.mjs';
 import {readFile} from 'node:fs/promises';
@@ -49,6 +50,8 @@ if(adminStore){const run=()=>adminStore.workforce.tick().catch(()=>console.error
 const handleAdmin=adminHandler(adminStore,origin);
 const smsStore=adminStore?new SmsStore(adminStore,contentStore):null;
 const handleSms=smsHandler(smsStore,adminStore,origin);
+const handleStaffSms=staffSmsHandler(smsStore?.staffReminders,adminStore,origin);
+if(smsStore)startStaffSmsWorker(smsStore.staffReminders);
 const cafeStore=adminStore?new CafeStore(adminStore,smsStore):null;
 const aqsiCafe=cafeStore?new AqsiCafe(adminStore,aqsi,cafeStore,{enabled:process.env.AQSI_CAFE_ENABLED==='1'}):null;
 if(cafeStore)cafeStore.terminal=aqsiCafe;
@@ -91,6 +94,7 @@ http.createServer(async(req,res)=>{
     }
     if(url.pathname==='/api/water-temperature'){if(req.method!=='GET')return json(res,405,{error:'method'});return json(res,200,water.snapshot());}
     if(await handleSms(req,res,url))return;
+    if(await handleStaffSms(req,res,url))return;
     if(await handleContent(req,res,url))return;
     if(url.pathname==='/index.html'){res.writeHead(301,{Location:'/'});res.end();return;}
     if(await handleAdmin(req,res,url))return;
