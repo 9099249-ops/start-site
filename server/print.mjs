@@ -50,13 +50,24 @@ export class PrintStore {
  reportSnapshot(shiftId,now=Date.now()){
   const s=this.selectedShift(shiftId,now),calc=this.admin.workforce.calculate(s.day,now);
   const employees=calc.employees.map(e=>{const payment=this.admin.workforce.payroll.employee(s.id,e,now),p=this.db.prepare('SELECT coalesce(p.display_name,u.login) name FROM admin_users u LEFT JOIN employee_profiles p ON p.user_id=u.id WHERE u.id=?').get(e.user_id),origin=payment.origins.map(p=>p.day).join(', ');return {userId:e.user_id,name:label((p?.name||e.name)+(origin&&origin!==s.day?' · '+origin:''),200),salaryCents:e.salary_cents,paidCents:payment.paid,remainingCents:payment.remaining_cents,reviewRequired:payment.review_required,origins:payment.origins};});
-  return {shiftId:s.id,date:s.day,preliminary:!calc.final,asOf:now,totalCents:calc.revenue.cents,declaredCents:s.declared_revenue_cents,varianceCents:calc.revenue.variance_cents||0,source:calc.revenue.source+(employees.some(e=>e.reviewRequired)?'; ранее выплаченная зарплата требует сверки суммы, повторно не выдавать':''),employees};
+  return {shiftId:s.id,date:s.day,preliminary:!calc.final,asOf:now,totalCents:calc.revenue.cents,...this.reportCash(s,now),declaredCents:s.declared_revenue_cents,varianceCents:calc.revenue.variance_cents||0,source:calc.revenue.source+(employees.some(e=>e.reviewRequired)?'; ранее выплаченная зарплата требует сверки суммы, повторно не выдавать':''),employees};
+ }
+ reportCash(shift,now){
+  const [start,end]=this.admin.workforce.accountingBounds(shift.day),until=Math.min(now,shift.closed_at??now,end-1),cash=this.admin.cashLedger.summary({role:'admin'},until,shift.id);
+  const rental=this.db.prepare("SELECT coalesce(sum(CASE WHEN method='card' THEN amount ELSE 0 END),0) cents,sum(CASE WHEN method='unspecified' AND amount>0 THEN 1 ELSE 0 END) unknown FROM payments WHERE created>=? AND created<=?").get(start,until);
+  const refunds=this.db.prepare("SELECT coalesce(sum(CASE WHEN method='card' THEN amount_cents ELSE 0 END),0) cents,sum(CASE WHEN method='unspecified' THEN 1 ELSE 0 END) unknown FROM customer_refunds WHERE created_at>=? AND created_at<=?").get(start,until);
+  let card=rental.cents-refunds.cents,unknown=(rental.unknown||0)+(refunds.unknown||0);
+  if(this.db.prepare("SELECT name FROM sqlite_master WHERE name='cafe_orders'").get()){
+   const rows=this.db.prepare("SELECT o.details,o.total_cents FROM cafe_orders o WHERE coalesce(json_extract(o.details,'$.terminalPaidAt'),(SELECT min(e.created) FROM cafe_order_events e WHERE e.order_id=o.id AND e.kind='DELIVERED'),o.updated)>=? AND coalesce(json_extract(o.details,'$.terminalPaidAt'),(SELECT min(e.created) FROM cafe_order_events e WHERE e.order_id=o.id AND e.kind='DELIVERED'),o.updated)<=? AND (json_extract(o.details,'$.terminalPaidAt') IS NOT NULL OR (o.status='DELIVERED' AND json_extract(o.details,'$.terminalPaymentRequired') IS NULL))").all(start,until);
+   for(const row of rows){const d=JSON.parse(row.details);if(d.complimentary||row.total_cents===0)continue;const method=d.paymentMethod||(d.cashPaidAt||d.payment==='cash'?'cash':null);if(method==='card')card+=row.total_cents;else if(method!=='cash')unknown++;}
+  }
+  return {cashStartCents:shift.cash_start_cents,cashEndCents:shift.cash_end_cents??(cash.unknownPayments?null:cash.balanceCents),cashEndEstimated:shift.cash_end_cents==null,cardTotalCents:shift.cashless_cents??(unknown?null:card)};
  }
  reportInfo(u,shiftId,now=Date.now()){
   staff(u);const snapshot=this.reportSnapshot(shiftId,now),base=`shift:${snapshot.shiftId}:${snapshot.preliminary?'preliminary':'final'}`;
   const docs=this.db.prepare("SELECT d.id FROM print_documents d WHERE source_key LIKE ? ORDER BY created_at DESC,rowid DESC").all(base+':%');
   const reports=docs.map(d=>this.job(this.db.prepare('SELECT id FROM print_jobs WHERE document_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1').get(d.id).id));
-  const financial=s=>JSON.stringify([s.totalCents,s.employees.map(e=>[e.userId,e.salaryCents,e.paidCents,e.remainingCents,!!e.reviewRequired,e.origins||[]])]);
+  const financial=s=>JSON.stringify([s.totalCents,s.cashStartCents,s.cashEndCents,s.cashEndEstimated,s.cardTotalCents,s.employees.map(e=>[e.userId,e.salaryCents,e.paidCents,e.remainingCents,!!e.reviewRequired,e.origins||[]])]);
   return {snapshot,reports,stale:!!reports[0]&&financial(reports[0].snapshot)!==financial(snapshot),device:this.device(now)};
  }
  report(b,u,now=Date.now()){
@@ -65,7 +76,8 @@ export class PrintStore {
    if(latest&&!b.newRevision)return {job:latest,duplicate:true};
    if(b.newRevision){id(b.previousDocumentId);if(!latest)fail('Предыдущий отчёт не найден.',409);if(latest.document_id!==b.previousDocumentId)return {job:latest,duplicate:true};if(!label(b.reason,300))fail('Укажите причину новой редакции.');}
    const snapshot=info.snapshot,revision=info.reports.length+1,phase=snapshot.preliminary?'preliminary':'final';
-   const payload={type:'shift_report',report_id:`start-shift-${snapshot.shiftId}-${phase}-v${revision}`,shift_id:String(snapshot.shiftId),date:snapshot.date,preliminary:snapshot.preliminary,revision,as_of:new Date(now).toISOString(),source:snapshot.source,total:rubles(snapshot.totalCents),transfers:snapshot.employees.filter(e=>e.remainingCents>0).map(e=>({recipient:e.name,amount:rubles(e.remainingCents)}))};
+   const cashAmount=value=>value==null?null:rubles(value);
+   const payload={type:'shift_report',report_id:`start-shift-${snapshot.shiftId}-${phase}-v${revision}`,shift_id:String(snapshot.shiftId),date:snapshot.date,preliminary:snapshot.preliminary,revision,as_of:new Date(now).toISOString(),source:snapshot.source,total:rubles(snapshot.totalCents),cash_start:cashAmount(snapshot.cashStartCents),cash_end:cashAmount(snapshot.cashEndCents),cash_end_estimated:snapshot.cashEndEstimated,card_total:cashAmount(snapshot.cardTotalCents),payment_reviews:snapshot.employees.filter(e=>e.reviewRequired).map(e=>e.name),transfers:snapshot.employees.filter(e=>e.remainingCents>0&&!e.reviewRequired).map(e=>({recipient:e.name,amount:rubles(e.remainingCents)}))};
    const job=this.enqueue(`shift:${snapshot.shiftId}:${phase}:${revision}`,payload,snapshot,u,now);if(b.newRevision)this.audit(job.id,u,'new_revision',b.reason,now);return {job,duplicate:false};
   });
  }

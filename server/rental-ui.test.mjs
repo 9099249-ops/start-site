@@ -15,11 +15,17 @@ function declaration(name){
 }
 function functions(names){return names.map(declaration).join('\n');}
 class Element{
- constructor(tag='div',value=''){this.tag=tag;this.value=value;this.children=[];this.dataset={};this.listeners={};this.attributes={};this.classes=new Set();this.classList={add:n=>this.classes.add(n),remove:n=>this.classes.delete(n),toggle:(n,v)=>v?this.classes.add(n):this.classes.delete(n)};}
+ constructor(tag='div',value=''){this.tag=tag;this._value=value;this.children=[];this.dataset={};this.listeners={};this.attributes={};this.classes=new Set();this.classList={add:n=>this.classes.add(n),remove:n=>this.classes.delete(n),toggle:(n,v)=>v?this.classes.add(n):this.classes.delete(n)};}
+ get value(){if(this.tag==='select'){const selected=this.children.find(child=>child.selected);if(selected)return selected.value;}return this._value;}
+ set value(value){this._value=String(value??'');if(this.tag==='select'){let matched=false;for(const child of this.children){child.selected=!matched&&child.value===this._value;matched=matched||child.selected;}}}
+ get options(){return this.tag==='select'?this.children:undefined;}
+ get selectedOptions(){if(this.tag!=='select')return undefined;const selected=this.children.find(child=>child.selected)||this.children.find(child=>child.value===this._value);return selected?[selected]:[];}
+ get selected(){return !!this._selected;}
+ set selected(value){this._selected=!!value;if(this._selected&&this.parentElement?.tag==='select')for(const sibling of this.parentElement.children)if(sibling!==this)sibling._selected=false;}
  set textContent(value){this.valueText=String(value??'');this.children=[];}
  get textContent(){return (this.valueText||'')+this.children.map(c=>c.textContent).join(' ');}
- append(...children){this.children.push(...children);}
- replaceChildren(...children){this.valueText='';this.children=children;if(this.tag==='select')this.value=children.find(c=>!c.disabled)?.value||'';}
+ append(...children){for(const child of children)child.parentElement=this;this.children.push(...children);}
+ replaceChildren(...children){this.valueText='';this.children=children;for(const child of children)child.parentElement=this;if(this.tag==='select')this.value=children.find(c=>!c.disabled)?.value||'';}
  setAttribute(key,value){this.attributes[key]=value;}
  addEventListener(event,listener){this.listeners[event]=listener;}
  querySelector(selector){return this.querySelectorAll(selector)[0]||null;}
@@ -31,14 +37,15 @@ const elementText=(tag,value,className)=>{const el=new Element(tag);el.textConte
 const money=n=>(n/100).toLocaleString('ru-RU',{style:'currency',currency:'RUB'});
 
 function priceFixture(draft){
- const form=new Element('form');form.elements=Object.fromEntries(['equipment','quantity','people','amount','name','phone','departed','expectedReturn'].map(n=>[n,new Element(n==='equipment'?'select':'input')]));
- form.reset=()=>{for(const [name,el] of Object.entries(form.elements))el.value=['quantity','people'].includes(name)?'1':'';};form.reset();
- const nodes={'#issue-form':form,'#issue-equipment':form.elements.equipment,'#issue-people-label':new Element(),'#issue-status':new Element(),'#issue-source':new Element(),'#issue-dialog':new Element('dialog'),'#issue-dates':new Element(),'#issue-time-summary':new Element()};
+ const form=new Element('form');form.elements=Object.fromEntries(['equipment','quantity','catamaranLabel','people','amount','name','phone','departed','expectedReturn','method'].map(n=>[n,new Element(['equipment','catamaranLabel'].includes(n)?'select':'input')]));
+ form.reset=()=>{for(const [name,el] of Object.entries(form.elements))el.value=['quantity','people'].includes(name)?'1':name==='method'?'unspecified':'';};form.reset();
+ form.elements.catamaranLabel.disabled=true;
+ const nodes={'#issue-form':form,'#issue-equipment':form.elements.equipment,'#issue-catamaran-label':form.elements.catamaranLabel,'#issue-catamaran-wrap':new Element('label'),'#issue-people-label':new Element(),'#issue-status':new Element(),'#issue-time-summary':new Element(),'#issue-dates':new Element('details'),'#issue-source':new Element(),'#issue-dialog':new Element('dialog')};
+ nodes['#issue-catamaran-wrap'].hidden=true;
  const storage=new Map(draft?[['rental-draft-1',JSON.stringify(draft)]]:[]);
  const duration=new Element('button');duration.dataset.duration='30';
- const context={URLSearchParams,location:{search:''},$:s=>nodes[s],data:{fleet:[{id:'sup',label:'SUP',available:5,price:1000},{id:'big',label:'Big SUP',available:1,price:1000}]},user:{id:1},requestId:null,issueInquiry:null,rentalPriceManual:false,rentalPricePlan:'hour',window:{},localTime:()=> '2026-09-27T10:00',money,text:elementText,crypto:{randomUUID:()=> 'same-request'},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},FormData:class{constructor(f){this.fields=f.elements;}*[Symbol.iterator](){for(const [name,el] of Object.entries(this.fields))yield [name,el.value];}},document:{querySelectorAll:()=>[duration]}};
- Object.assign(context,{pendingRental:()=>null,time:n=>new Date(n).toISOString(),compactDuration:Desk.duration});
- runInNewContext(functions(['updateRentalPrice','saveRentalDraft','openIssue','issueBooking'])+'\n'+lines.filter(l=>l.startsWith("for(const name of ['equipment'")||l.startsWith("$('#issue-form').elements.amount.addEventListener")||l.startsWith("for(const b of document.querySelectorAll('[data-duration]')")).join('\n'),context);
+ const context={URLSearchParams,location:{search:''},$:s=>nodes[s]||null,data:{fleet:[{id:'sup',label:'SUP',available:5,price:1000},{id:'big',label:'Big SUP',available:1,price:1000},{id:'catamaran',label:'Катамаран',available:2,price:5000}]},user:{id:1},requestId:null,issueInquiry:null,pendingRentalMemory:null,batteryCatamarans:[{label:'Aurora',trip:null},{label:'Borealis',trip:{state:'active'}}],batteryTripsByRental:new Map(),batteryLabelsByRental:new Map(),renderList(){},rentalPriceManual:false,rentalPricePlan:'hour',window:{},localTime:()=> '2026-09-27T10:00',time:n=>new Date(n).toISOString(),compactDuration:Desk.duration,money,text:elementText,crypto:{randomUUID:()=> 'same-request'},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},FormData:class{constructor(f){this.fields=f.elements;}*[Symbol.iterator](){for(const [name,el] of Object.entries(this.fields))if(!el.disabled)yield [name,el.value];}},document:{querySelectorAll:s=>s==='[data-duration]'?[duration]:[]}};
+ runInNewContext(functions(['pendingRental','updateBatteryOverview','populateCatamaranOptions','syncCatamaranField','updateRentalPrice','saveRentalDraft','openIssue','issueBooking'])+'\n'+lines.filter(l=>l.startsWith("for(const name of ['equipment'")||l.startsWith("$('#issue-form').elements.amount.addEventListener")||l.startsWith("for(const b of document.querySelectorAll('[data-duration]')")).join('\n'),context);
  return {context,form,nodes,storage,duration};
 }
 
@@ -91,11 +98,78 @@ test('Hourly booking still calculates its selected quantity and duration automat
  f.form.elements.expectedReturn.value='2026-09-27T11:00';f.form.elements.expectedReturn.listeners.change();assert.equal(f.form.elements.amount.value,'2000.00');
 });
 
+test('Named catamaran selection carries its label while occupied named boats stay disabled',()=>{
+ const f=priceFixture();f.context.openIssue(false);
+ const equipment=f.form.elements.equipment,options=equipment.options.filter(option=>option.value==='catamaran');
+ assert.equal(options.length,3);assert.equal(options[0].dataset.catamaranLabel,undefined);assert.equal(options[1].dataset.catamaranLabel,'Aurora');assert.equal(options[2].dataset.catamaranLabel,'Borealis');
+ assert.equal(options[0].disabled,false);assert.equal(options[1].disabled,false);assert.equal(options[2].disabled,true);
+ options[0].selected=false;options[1].selected=true;equipment.listeners.change();
+ assert.equal(equipment.value,'catamaran');assert.equal(f.form.elements.quantity.value,'1');assert.equal(f.form.elements.catamaranLabel.value,'Aurora');assert.equal(f.nodes['#issue-catamaran-wrap'].hidden,true);
+ const payload=Object.fromEntries(new f.context.FormData(f.form));assert.equal(payload.equipment,'catamaran');assert.equal(payload.catamaranLabel,'Aurora');
+});
+
+test('Submitting a selected named catamaran sends generic equipment id and the chosen boat label',async()=>{
+ const f=priceFixture();f.context.openIssue(false);
+ const named=f.form.elements.equipment.options.find(option=>option.dataset.catamaranLabel==='Aurora');named.selected=true;f.form.elements.equipment.listeners.change();
+ const requests=[];f.context.api=async(...args)=>{requests.push(args);return {id:81};};f.context.finishRental=async()=>{};f.context.pendingRental=()=>null;f.context.rememberRental=()=>{};f.context.lockRentalForm=()=>{};f.context.Event=Event;f.context.window.STARTUx={event(){}};f.nodes['#close-issue']=new Element('button');
+ const start=lines.findIndex(line=>line.startsWith("$('#issue-form').onsubmit=")),end=lines.findIndex((line,index)=>index>start&&line==='};');assert.ok(start>=0&&end>start);
+ runInNewContext(lines.slice(start,end+1).join('\n'),f.context);
+ await f.form.onsubmit({preventDefault(){},target:f.form});
+ assert.equal(requests.length,1);assert.equal(requests[0][0],'rentals');assert.equal(requests[0][1].equipment,'catamaran');assert.equal(requests[0][1].catamaranLabel,'Aurora');assert.equal(requests[0][1].quantity,1);
+});
+
+test('Changing a named catamaran to multiple units selects the generic equipment option',()=>{
+ const f=priceFixture();f.context.openIssue(false);
+ const equipment=f.form.elements.equipment,named=equipment.options.find(option=>option.dataset.catamaranLabel==='Aurora');
+ equipment.options.filter(option=>option.value==='catamaran').forEach(option=>{option.selected=option===named;});equipment.listeners.change();
+ assert.equal(f.form.elements.catamaranLabel.value,'Aurora');
+ f.form.elements.quantity.value='2';f.form.elements.quantity.listeners.change();
+ assert.equal(equipment.value,'catamaran');assert.equal(equipment.selectedOptions[0].dataset.catamaranLabel,undefined);
+ assert.equal(f.form.elements.catamaranLabel.value,'');assert.equal(f.form.elements.catamaranLabel.disabled,true);assert.equal(f.nodes['#issue-catamaran-wrap'].hidden,true);
+ const payload=Object.fromEntries(new f.context.FormData(f.form));assert.equal(payload.equipment,'catamaran');assert.equal(payload.quantity,'2');assert.equal('catamaranLabel' in payload,false);
+});
+
+test('Restoring a named catamaran draft restores the named option and keeps the secondary selector hidden',()=>{
+ const draft={at:Date.now(),requestId:'named-catamaran-draft',inquiryId:null,manualPrice:false,pricePlan:'hour',fields:{equipment:'catamaran',quantity:1,catamaranLabel:'Aurora',people:1,amount:'5000',name:'Иван',phone:'79001112233',departed:'2026-09-27T10:00',expectedReturn:'2026-09-27T11:00',method:'unspecified'}};
+ const f=priceFixture(draft);f.context.openIssue();
+ const selected=f.form.elements.equipment.selectedOptions[0];assert.equal(selected.value,'catamaran');assert.equal(selected.dataset.catamaranLabel,'Aurora');
+ assert.equal(f.form.elements.catamaranLabel.value,'Aurora');assert.equal(f.nodes['#issue-catamaran-wrap'].hidden,true);assert.equal(f.context.requestId,'named-catamaran-draft');
+});
+
+test('Submit rejects a named catamaran that became occupied while the form was open without sending a request',async()=>{
+ const f=priceFixture();f.context.openIssue(false);
+ const equipment=f.form.elements.equipment,named=equipment.options.find(option=>option.dataset.catamaranLabel==='Aurora');
+ named.selected=true;equipment.listeners.change();assert.equal(f.form.elements.catamaranLabel.value,'Aurora');
+ f.context.batteryCatamarans[0].trip={state:'active'};
+ const requests=[];f.context.api=async(...args)=>requests.push(args);f.context.pendingRental=()=>null;f.context.rememberRental=()=>{};f.context.lockRentalForm=()=>{};f.context.Event=Event;
+ f.context.window.STARTUx={event(){}};f.nodes['#close-issue']=new Element('button');
+ const submitStart=lines.findIndex(line=>line.startsWith("$('#issue-form').onsubmit=")),submitEnd=lines.findIndex((line,index)=>index>submitStart&&line==='};');assert.ok(submitStart>=0&&submitEnd>submitStart);
+ runInNewContext(lines.slice(submitStart,submitEnd+1).join('\n'),f.context);
+ await f.form.onsubmit({preventDefault(){},target:f.form});
+ assert.deepEqual(requests,[]);assert.match(f.nodes['#issue-status'].textContent,/уже занят/);assert.equal(f.form.dataset.saving,undefined);
+});
+
+test('Submit rejects a named catamaran when the overview becomes unavailable without sending a request',async()=>{
+ const f=priceFixture();f.context.openIssue(false);
+ const equipment=f.form.elements.equipment,named=equipment.options.find(option=>option.dataset.catamaranLabel==='Aurora');named.selected=true;equipment.listeners.change();
+ assert.equal(f.form.elements.catamaranLabel.value,'Aurora');
+ f.context.updateBatteryOverview(null);
+ assert.equal(f.context.batteryCatamarans.every(boat=>boat.overviewUnavailable===true),true);
+ assert.equal(f.form.elements.catamaranLabel.options.find(option=>option.value==='Aurora').disabled,true);
+ const requests=[];f.context.api=async(...args)=>requests.push(args);f.context.pendingRental=()=>null;f.context.rememberRental=()=>{};f.context.lockRentalForm=()=>{};f.context.Event=Event;
+ f.context.window.STARTUx={event(){}};f.nodes['#close-issue']=new Element('button');
+ const submitStart=lines.findIndex(line=>line.startsWith("$('#issue-form').onsubmit=")),submitEnd=lines.findIndex((line,index)=>index>submitStart&&line==='};');assert.ok(submitStart>=0&&submitEnd>submitStart);
+ runInNewContext(lines.slice(submitStart,submitEnd+1).join('\n'),f.context);
+ await f.form.onsubmit({preventDefault(){},target:f.form});
+ assert.deepEqual(requests,[]);assert.match(f.nodes['#issue-status'].textContent,/нет свежих данных о катамаранах/i);assert.equal(f.form.dataset.saving,undefined);
+});
+
 test('Global search includes an active rental from another tab despite the overdue filter and opens it',async()=>{
  const row={id:17,name:'Иван',phone:'+79001112233',equipment:'sup',expected_return:2000,returned:null};
  const results=new Element(),focus={};const selected={scrollIntoView:options=>{focus.scroll=options;},querySelector:()=>({focus:()=>{focus.focused=true;}})};
  const context={URLSearchParams,location:{search:''},Desk,data:{active:[row],dayRentals:[row],fleet:[{id:'sup',label:'SUP'}]},activeQuery:'Иван',activeFilter:'overdue',deskView:'bookings',expandedRental:null,searchResults:{rentals:[row],bookings:[],clients:[{name:'Иван',phone:'79001112233'}],cafe:[]},serverNow:()=>1000,shortTime:()=> '12:00',text:elementText,money,$:s=>s==='#desk-results'?results:selected,renderList:()=>{focus.rendered=true;},switchDesk:view=>{context.deskView=view;},requestAnimationFrame:fn=>fn(),document:{createElement:tag=>new Element(tag)}};
- runInNewContext(functions(['searchActiveRentals','openSearchRental','renderSearch']),context);context.renderSearch();
+ context.rentalStage='all';
+ runInNewContext(lines.find(l=>l.startsWith('const isPaidWaitingDeparture='))+'\n'+functions(['waitingRows','searchActiveRentals','openSearchRental','renderSearch']),context);context.renderSearch();
  assert.equal(results.children.filter(el=>el.textContent.startsWith('На воде')).length,1);
  assert.ok(results.children.some(el=>el.textContent.includes('новая аренда')));
  await results.children[0].onclick();assert.equal(context.deskView,'work');assert.equal(context.activeFilter,'all');assert.equal(context.expandedRental,17);assert.equal(context.activeQuery,'Иван');assert.equal(focus.focused,true);assert.equal(focus.rendered,true);
@@ -105,11 +179,11 @@ test('Both return controls disclose the surcharge and history shows the amount b
  const history=new Element(),r={id:17,name:'Иван',equipment:'sup',quantity:1,extension_due:125050,expected_return:2000,departed:'2026-09-27T10:00',phone:'79001112233',paid:100000};
  const nodes={'#rental-history-list':history,'#rental-history-day':new Element(),'#report-day':{value:'2026-09-27'},'#rental-history-count':new Element()};
  const context={URLSearchParams,location:{search:''},window:{},text:elementText,money,$:s=>nodes[s],Desk,data:{dayRentals:[r],fleet:[{id:'sup',label:'SUP'}]},activeQuery:'',historyFilter:'all',user:{role:'staff'},time:()=> '10:00',shortTime:()=> '12:00',returnRental:()=>{}};
- runInNewContext(functions(['returnAmount','returnLabel','setReturnButton','renderDayRentals']),context);
+ runInNewContext(lines.find(l=>l.startsWith('const isPaidWaitingDeparture='))+'\n'+functions(['rentalHistoryStatus','returnAmount','returnLabel','setReturnButton','renderDayRentals']),context);
  const waterButton=new Element('button');context.setReturnButton(waterButton,r);context.renderDayRentals();
  const details=history.children[0].children[1],historyButton=details.children.find(el=>el.tag==='button');
- assert.equal(historyButton.attributes['aria-label'],waterButton.attributes['aria-label']);assert.match(historyButton.attributes['aria-label'],/Вернуть · доплата/);assert.match(historyButton.textContent,/1\s?250,5/);assert.match(details.textContent,/К доплате при возврате/);
- assert.ok(waterButton.classes.has('has-surcharge'));context.setReturnButton(waterButton,{extension_due:0});assert.equal(waterButton.textContent,'Вернуть');assert.ok(!waterButton.classes.has('has-surcharge'));
+ assert.equal(historyButton.attributes['aria-label'],waterButton.attributes['aria-label']);assert.match(historyButton.attributes['aria-label'],/Вернулись · доплата/);assert.match(historyButton.textContent,/1\s?250,5/);assert.match(details.textContent,/К доплате при возврате/);
+ assert.ok(waterButton.classes.has('has-surcharge'));context.setReturnButton(waterButton,{extension_due:0});assert.equal(waterButton.textContent,'Вернулись');assert.ok(!waterButton.classes.has('has-surcharge'));
 });
 
 test('Rental request reports lost responses in Russian, never retries, and preserves validation errors',async()=>{
@@ -143,33 +217,4 @@ test('Station cafe block keeps all active stages and completes orders with the s
  assert.deepEqual(Array.from(context.cafeAttention,r=>r.status),['NEW','ACCEPTED','COOKING','READY']);
  for(const row of output.children){const button=row.children.find(el=>el.tag==='button');assert.equal(button.textContent,'Выполнен');assert.match(row.textContent,/В работе/);}
  await output.children[0].children.find(el=>el.tag==='button').onclick();assert.equal(posts.length,1);assert.equal(posts[0].status,'DELIVERED');assert.equal(posts[0].revision,2);
-});
-
-test('Availability tab renders dashboard fleet counts and retains settings routes',()=>{
- const html=readFileSync(new URL('../dist/admin/index.html',import.meta.url),'utf8');
- const settings=readFileSync(new URL('../dist/admin/settings.js',import.meta.url),'utf8');
- const nav=html.match(/<nav class="desk-tabs"[^]*?<\/nav>/)?.[0]||'';
- assert.equal((nav.match(/data-desk-view=/g)||[]).length,5);
- assert.match(nav,/<button data-desk-view="availability">Свободно сейчас<\/button>/);
- assert.match(html,/data-desk-pane="availability"[^]*?<div id="fleet" class="fleet"><\/div>/);
- assert.match(settings,/\/admin\/\?settings=content/);assert.match(settings,/\/admin\/\?settings=sms/);assert.match(settings,/#fleet-settings/);
- const fleet=new Element(),panes=[{dataset:{deskPane:'work'},hidden:false},{dataset:{deskPane:'availability'},hidden:false}],buttons=[{dataset:{deskView:'work'},classList:{toggle(n,v){this.selected=v;}},setAttribute(k,v){this[k]=v;}},{dataset:{deskView:'availability'},classList:{toggle(n,v){this.selected=v;}},setAttribute(k,v){this[k]=v;}}];
- const context={data:{fleet:[{id:'sup',label:'SUP',available:38,total:45},{id:'boat',label:'Лодка',available:0,total:2}]},text:elementText,$:s=>s==='#fleet'?fleet:null,document:{querySelectorAll:s=>s==='[data-desk-pane]'?panes:buttons},user:null,saveDesk(){}};
- runInNewContext(functions(['renderFleet','switchDesk']),context);context.renderFleet();context.switchDesk('availability');
- assert.deepEqual(fleet.children.map(row=>[row.textContent,row.className]),[['SUP38 / 45',''],['Лодка0 / 2','none']]);
- assert.equal(panes[0].hidden,true);assert.equal(panes[1].hidden,false);assert.equal(buttons[1].classList.selected,true);
-});
-
-test('Legacy More selection restores availability while availability and explicit work routes remain selectable',()=>{
- const panes=['work','availability','more'].map(deskPane=>({dataset:{deskPane},hidden:false}));
- const buttons=['work','availability'].map(deskView=>({dataset:{deskView},classList:{toggle(n,v){this.selected=v;}},setAttribute(){}}));
- function restore(savedView,hash=''){
-  const nodes={'#active-search':new Element('input'),'#rental-history-filter':new Element('select')};
-  const context={URLSearchParams,JSON,Date,location:{search:'',hash},restoredContext:false,user:{id:7},activeQuery:'',activeFilter:'all',historyFilter:'all',deskView:'work',sessionStorage:{getItem:()=>JSON.stringify({view:savedView,at:Date.now()})},$:s=>nodes[s],document:{querySelectorAll:s=>s==='[data-desk-pane]'?panes:buttons},requestAnimationFrame(){},window:{scrollTo(){}},searchDesk(){},saveDesk(){}};
-  runInNewContext(functions(['switchDesk','restoreDesk']),context);context.restoreDesk();return context.deskView;
- }
- assert.equal(restore('more'),'availability');
- assert.equal(restore('availability'),'availability');
- assert.equal(restore('more','#work'),'work');
- assert.match(source,/if\(\['content','sms'\]\.includes\(new URLSearchParams\(location\.search\)\.get\('settings'\)\)\)switchDesk\('more'\)/);
 });

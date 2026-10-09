@@ -17,6 +17,7 @@
   if(loaded)return;loaded=true;const root=el('section');root.className='panel';root.id='sms-settings';root.append(el('h2','СМС и уведомления'));document.querySelector('#workspace').append(root);const notice=el('p');notice.setAttribute('role','status');root.append(notice);
   try{
    const d=await api('sms');if(user.role==='admin'){
+    await window.staffSmsLoad?.(root,user);
     let settings=d.settings;const f=el('form');const fields={};
     for(const [name,label,type] of [['enabled','Включить платную отправку СМС','checkbox'],['promoEnabled','СМС с промокодом','checkbox'],['remindersEnabled','Напоминания за 1 час','checkbox'],['dailyLimit','Лимит сообщений в день (не рублей и не SMS-сегментов)','number'],['sign','Имя отправителя SMS Aero','text'],['YANDEX_NAVIGATOR_URL','Общая ссылка на Яндекс.Навигатор','url'],['BOOKING_LATE_CANCEL_MINUTES','Отмена при опоздании более, минут','number'],['promoCode','Промокод','text'],['promoAmount','Скидка, ₽','number']]){const l=el('label',label),i=el('input');i.type=type;i.name=name;if(type==='checkbox')i.checked=settings[name];else{i.value=settings[name];i.required=true;}l.append(i);f.append(l);fields[name]=i;}
     root.append(el('p','Телефон станции: '+settings.STATION_PHONE+'. Изменяется в «Содержимое сайта и SEO» после публикации. Ссылка общая для промокода и напоминаний. Все времена — московские.'));

@@ -14,10 +14,10 @@ export function availability(db,fleet,equipment,start,end,{ignoreInquiry=0,ignor
  for(const r of db.prepare("SELECT id,details FROM inquiries WHERE status='confirmed' AND id<>?").all(ignoreInquiry)){
   const b=JSON.parse(r.details);if(b.equipment!==equipment)continue;const w=bookingWindow(b,close);if(w)occupied.push({...w,source:'booking',id:r.id});
  }
- for(const r of db.prepare('SELECT id,quantity,departed,expected_return FROM rentals WHERE equipment=? AND returned IS NULL AND id<>?').all(equipment,ignoreRental)){
-  const a=localStamp(r.departed),planned=r.expected_return||a+3600000;
+ for(const r of db.prepare('SELECT id,quantity,departed,departed_at,departure_pending,expected_return FROM rentals WHERE equipment=? AND returned IS NULL AND id<>?').all(equipment,ignoreRental)){
+  const a=r.departed_at??localStamp(r.departed),planned=r.expected_return||a+3600000;
   // An overdue craft is physically absent; no future return can be assumed.
-  occupied.push({start:a,end:planned<=now?Infinity:planned,quantity:r.quantity,source:'rental',id:r.id});
+  occupied.push({start:a,end:r.departure_pending||planned<=now?Infinity:planned,quantity:r.quantity,source:'rental',id:r.id});
  }
  const overlapping=occupied.filter(w=>w.start<end&&w.end>start),points=[];
  for(const w of overlapping){points.push([Math.max(start,w.start),w.quantity],[Math.min(end,w.end),-w.quantity]);}
@@ -29,10 +29,10 @@ export function calendarData(store,fleet,date,days=1,now=Date.now()){
  if(![1,7].includes(days))fail('Выберите день или неделю.');const start=localStamp(date+'T00:00'),end=start+days*86400000;
  const settings=store.sms?.settings(),close=store.sms?.content?.live().close||'22:00',lateMinutes=settings?.BOOKING_LATE_CANCEL_MINUTES||15;
  const rows=[];
- for(const r of store.db.prepare('SELECT i.*,r.returned,r.departed,r.expected_return,r.initial_due FROM inquiries i LEFT JOIN rentals r ON r.id=i.rental_id ORDER BY i.id').all()){
-  const b=JSON.parse(r.details);let w=bookingWindow(b,close);if(w&&r.departed)w={...w,start:localStamp(r.departed),end:r.returned||Math.max(r.expected_return||0,now+1)};if(!w||w.start>=end||w.end<=start)continue;
-  rows.push({...r,details:b,start:w.start,end:w.end,units:w.quantity,late:r.status==='confirmed'&&now>w.start+lateMinutes*60000,state:r.returned?'completed':r.status,availability:r.status==='new'?availability(store.db,fleet,b.equipment,w.start,w.end,{now,close}):null});
+ for(const r of store.db.prepare('SELECT i.*,r.returned,r.departed,r.departed_at,r.departure_pending,r.expected_return,r.initial_due FROM inquiries i LEFT JOIN rentals r ON r.id=i.rental_id ORDER BY i.id').all()){
+  const b=JSON.parse(r.details);let w=bookingWindow(b,close);if(w&&r.departed)w={...w,start:r.departed_at??localStamp(r.departed),end:r.returned||(r.departure_pending?Math.max(end,now+1):Math.max(r.expected_return||0,now+1))};if(!w||w.start>=end||w.end<=start)continue;
+  rows.push({...r,details:b,start:w.start,end:w.end,units:w.quantity,late:r.status==='confirmed'&&now>w.start+lateMinutes*60000,state:r.returned?(r.departure_pending?'cancelled':'completed'):r.initial_due>0?'payment_pending':r.departure_pending?'departure_pending':r.status,availability:r.status==='new'?availability(store.db,fleet,b.equipment,w.start,w.end,{now,close}):null});
  }
- const rentals=store.db.prepare('SELECT id,equipment,quantity,name,phone,departed,expected_return,returned,initial_due FROM rentals WHERE id NOT IN (SELECT rental_id FROM inquiries WHERE rental_id IS NOT NULL)').all().filter(r=>localStamp(r.departed)<end&&(r.returned||Math.max(r.expected_return||0,end))>start);
- return {date,days,now,close,lateMinutes,rows,rentals,fleet:fleet.map(([id,label,total])=>({id,label,total})),overdue:store.db.prepare('SELECT id,equipment,quantity,expected_return FROM rentals WHERE returned IS NULL AND initial_due=0 AND expected_return<=?').all(now)};
+ const rentals=store.db.prepare('SELECT id,equipment,quantity,name,phone,departed,departed_at,departure_pending,expected_return,returned,initial_due FROM rentals WHERE id NOT IN (SELECT rental_id FROM inquiries WHERE rental_id IS NOT NULL)').all().filter(r=>(r.departed_at??localStamp(r.departed))<end&&(r.returned||(r.departure_pending?end:Math.max(r.expected_return||0,end)))>start);
+ return {date,days,now,close,lateMinutes,rows,rentals,fleet:fleet.map(([id,label,total])=>({id,label,total})),overdue:store.db.prepare('SELECT id,equipment,quantity,expected_return FROM rentals WHERE returned IS NULL AND initial_due=0 AND departure_pending=0 AND expected_return<=?').all(now)};
 }

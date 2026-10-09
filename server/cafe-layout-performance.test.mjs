@@ -12,7 +12,7 @@ function fixture(source){
   links.push({dataset:{},getAttribute:k=>attrs.get(k),hasAttribute:k=>attrs.has(k),setAttribute:(k,v)=>{metrics.writes++;attrs.set(k,v);},removeAttribute:k=>{metrics.writes++;attrs.delete(k);},getBoundingClientRect:rect});
  }
  const query=items=>()=>{metrics.queries++;return items;};
- const context={categoryEntries:[],innerWidth:1280,innerHeight:800,window:{innerHeight:800},scrollY:0,document:{documentElement:{scrollTop:0,scrollHeight:4000}},content:{querySelectorAll:query(sections)},categories:{querySelectorAll:query(links),getBoundingClientRect:()=>({top:0,bottom:800}),scrollTop:0},getComputedStyle:()=>({scrollMarginTop:'0'}),matchMedia:()=>({matches:true})};
+ const context={categoryEntries:[],innerWidth:1280,innerHeight:800,scrollY:0,document:{documentElement:{scrollHeight:4000}},content:{querySelectorAll:query(sections)},categories:{querySelectorAll:query(links),getBoundingClientRect:()=>({top:0,bottom:800}),scrollTop:0},getComputedStyle:()=>({scrollMarginTop:'0'}),matchMedia:()=>({matches:true})};
  vm.createContext(context);vm.runInContext(source.slice(source.indexOf('  function compactCategories(){'),source.indexOf("  categories.addEventListener('click'")),context);
  vm.runInContext('compactCategories();updateCategory();',context);
  return {context,metrics,sections,links};

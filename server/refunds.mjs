@@ -51,6 +51,10 @@ export class RefundStore{
    let remaining=amount;for(const sale of sales){const refunded=this.db.prepare('SELECT coalesce(sum(amount_cents),0) n FROM refund_allocations WHERE sale_key=?').get(sale.id).n,take=Math.min(remaining,sale.cents-refunded);if(take>0){this.allocate(id,sale,take,now);remaining-=take;}if(!remaining)break;}if(remaining)fail('Не удалось сопоставить оплату. Нужна сверка.',409);
    if(!['cash','card'].includes(b.method)&&this.admin.cashLedger?.enabled)fail('Укажите способ возврата денег.');if(b.method!==undefined&&!['cash','card'].includes(b.method))fail('Неверный способ возврата.');if(b.method)this.db.prepare('UPDATE customer_refunds SET method=? WHERE id=?').run(b.method,id);
    this.admin.workforce.audit(u,'customer_refund',id,{kind:b.kind,sourceId:b.id,refundedCents:info.refundedCents},{amountCents:amount,lines},b.reason.trim(),now);
+   if(b.kind==='rental'&&info.refundedCents+amount===info.paidCents){
+    const waiting=this.db.prepare('SELECT id FROM rentals WHERE id=? AND departure_pending=1 AND returned IS NULL').get(b.id);
+    if(waiting){this.db.prepare('UPDATE rentals SET returned=?,returned_by=?,revision=revision+1 WHERE id=?').run(now,u.id,b.id);this.admin.audit(u,'cancel_refunded_departure',b.id);}
+   }
    return {...this.info(b.kind,b.id,u),refundId:id};
   });
  }
