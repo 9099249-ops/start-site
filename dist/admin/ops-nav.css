@@ -5,6 +5,9 @@
 .ops-nav .ops-task-count{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;min-width:22px;min-height:22px;padding:0 5px;border-radius:999px;background:#c62828;color:#fff;font:800 12px/1 system-ui,sans-serif;font-variant-numeric:tabular-nums;white-space:nowrap}
 .ops-nav .ops-task-count[hidden]{display:none!important}
 .ops-nav a:focus-visible{outline:3px solid #1554eb;outline-offset:1px}
+.ops-nav .ops-analytics-link[hidden],.ops-nav .ops-financial-link[hidden]{display:none!important}
+@media(max-width:700px){body .desk-chrome nav.ops-nav:has(.ops-analytics-link:not([hidden]))::before{content:"";order:1;flex:0 0 100%;height:0}body .desk-chrome nav.ops-nav a.ops-analytics-link,body .desk-chrome nav.ops-nav a.ops-financial-link,body .desk-chrome nav.ops-nav a[href="/admin/settings/"]{order:2;flex:1 1 0!important;min-width:0!important;font-size:12px!important;overflow:visible;white-space:nowrap}}
+@media(max-width:700px){body .desk-chrome .ops-nav a.ops-analytics-link,body .desk-chrome .ops-nav a.ops-financial-link{flex:1.5 0 76px!important;overflow:visible;white-space:nowrap}body .desk-chrome .ops-nav .ops-logout{top:auto!important;bottom:3px}}
 .ops-nav:has(.ops-logout:not([hidden])){grid-template-columns:repeat(3,minmax(0,1fr)) auto}
 .ops-nav .ops-logout{min-height:44px;min-width:62px;padding:5px 8px;margin:0;border:1px solid #adbac8;border-radius:6px;background:#fff;color:#263b50;font:700 11px/1.2 system-ui,sans-serif;cursor:pointer;touch-action:manipulation}
 .ops-nav .ops-logout:focus-visible{outline:3px solid #1554eb;outline-offset:1px}.ops-nav .ops-logout[hidden]{display:none!important}.ops-nav .ops-logout:disabled{opacity:.55;cursor:wait}

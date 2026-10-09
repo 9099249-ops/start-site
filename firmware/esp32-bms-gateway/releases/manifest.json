@@ -1,0 +1,9 @@
+{
+  "release": "gateway-1.1.2",
+  "version": "1.1.2",
+  "chip": "ESP32",
+  "size": 1336544,
+  "sha256": "c9cd6593dabdcb441b9c0222a009874521ade1c57983ff77a2be504c5cfacd86",
+  "signature": "MEQCIBtAYmvOfkuby3r3eXjlWUXc2gC0ROA+WUaOJomiYPwcAiBPNfnqL1Q9KItZ6KeSFY3yaTS9LN7eNjBAoJXl5+M5dA==",
+  "recoverySha256": "311acffc76f204ac732a923e40142725ea6e17cd6e39990c07faa7bfd8684740"
+}

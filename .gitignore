@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 *.pem
+!firmware/esp32-bms-gateway/releases/public-key.pem
 *.key
 *.pfx
 *.p12

@@ -6,8 +6,9 @@ const pizzas = ['Маргарита песто', '4 сыра', 'Супермяс
 const key = name => normalizeInventoryName(name).replace('пепперони', 'пеперони');
 
 export function linkReadyMadePizzas(cafe, user) {
+  if(user?.role!=='admin')throw Object.assign(new Error('Автозаполнение доступно только администратору.'),{status:403});
   const stock = cafe.stock;
-  const config = stock.config(user); // Existing admin permission check.
+  const config = stock.config(user);
   const catalog = cafe.catalog();
   const pizzaCategories = new Set(catalog.categories.filter(c => key(c.name) === 'пицца').map(c => c.id));
   const result = [];
