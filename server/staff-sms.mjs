@@ -77,7 +77,7 @@ export class StaffShiftReminders{
   const accepted=result?.ok&&Number.isSafeInteger(Number(result.data?.id))&&Number(result.data.id)>0;
   if(accepted){this.db.prepare("UPDATE staff_sms_jobs SET status='accepted',provider_id=?,sent_at=?,last_error='' WHERE id=?").run(Number(result.data.id),now,job.id);this.event(job,'accepted',{providerId:Number(result.data.id)},now);}
   else{
-   const explicit=result?.ok===false&&result.retry===true&&!result.unknown,status=explicit?(job.attempts<5?'retry':'failed'):'unknown',error=explicit?'SMS Aero явно отклонил запрос.':'Отправка не подтверждена. Проверьте SMS Aero; автоматический повтор остановлен.';
+   const explicit=result?.ok===false&&typeof result.retry==='boolean'&&!result.unknown,status=explicit?(result.retry&&job.attempts<5?'retry':'failed'):'unknown',error=explicit?(result.error||'SMS Aero явно отклонил запрос.'):'Отправка не подтверждена. Проверьте SMS Aero; автоматический повтор остановлен.';
    const due=now+Math.min(900000,(job.kind==='hour'?5000:60000)*2**(job.attempts-1));
    this.db.prepare('UPDATE staff_sms_jobs SET status=?,due=?,last_error=? WHERE id=?').run(status,due,error,job.id);this.event(job,status,{attempt:job.attempts,error},now);
   }

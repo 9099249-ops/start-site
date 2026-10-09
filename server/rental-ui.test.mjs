@@ -31,13 +31,15 @@ const elementText=(tag,value,className)=>{const el=new Element(tag);el.textConte
 const money=n=>(n/100).toLocaleString('ru-RU',{style:'currency',currency:'RUB'});
 
 function priceFixture(draft){
- const form=new Element('form');form.elements=Object.fromEntries(['equipment','quantity','people','amount','name','phone','departed','expectedReturn'].map(n=>[n,new Element(n==='equipment'?'select':'input')]));
- form.reset=()=>{for(const [name,el] of Object.entries(form.elements))el.value=['quantity','people'].includes(name)?'1':'';};form.reset();
- const nodes={'#issue-form':form,'#issue-equipment':form.elements.equipment,'#issue-people-label':new Element(),'#issue-status':new Element(),'#issue-source':new Element(),'#issue-dialog':new Element('dialog')};
+ const form=new Element('form');form.elements=Object.fromEntries(['equipment','quantity','catamaranLabel','people','amount','name','phone','departed','expectedReturn','method'].map(n=>[n,new Element(['equipment','catamaranLabel'].includes(n)?'select':'input')]));
+ form.reset=()=>{for(const [name,el] of Object.entries(form.elements))el.value=['quantity','people'].includes(name)?'1':name==='method'?'unspecified':'';};form.reset();
+ form.elements.catamaranLabel.disabled=true;
+ const nodes={'#issue-form':form,'#issue-equipment':form.elements.equipment,'#issue-catamaran-label':form.elements.catamaranLabel,'#issue-catamaran-wrap':new Element('label'),'#issue-people-label':new Element(),'#issue-status':new Element(),'#issue-time-summary':new Element(),'#issue-dates':new Element('details'),'#issue-source':new Element(),'#issue-dialog':new Element('dialog')};
+ nodes['#issue-catamaran-wrap'].hidden=true;
  const storage=new Map(draft?[['rental-draft-1',JSON.stringify(draft)]]:[]);
  const duration=new Element('button');duration.dataset.duration='30';
- const context={URLSearchParams,location:{search:''},$:s=>nodes[s],data:{fleet:[{id:'sup',label:'SUP',available:5,price:1000},{id:'big',label:'Big SUP',available:1,price:1000}]},user:{id:1},requestId:null,issueInquiry:null,rentalPriceManual:false,rentalPricePlan:'hour',window:{},localTime:()=> '2026-09-27T10:00',money,text:elementText,crypto:{randomUUID:()=> 'same-request'},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},FormData:class{constructor(f){this.fields=f.elements;}*[Symbol.iterator](){for(const [name,el] of Object.entries(this.fields))yield [name,el.value];}},document:{querySelectorAll:()=>[duration]}};
- runInNewContext(functions(['updateRentalPrice','saveRentalDraft','openIssue','issueBooking'])+'\n'+lines.filter(l=>l.startsWith("for(const name of ['equipment'")||l.startsWith("$('#issue-form').elements.amount.addEventListener")||l.startsWith("for(const b of document.querySelectorAll('[data-duration]')")).join('\n'),context);
+ const context={URLSearchParams,location:{search:''},$:s=>nodes[s]||null,data:{fleet:[{id:'sup',label:'SUP',available:5,price:1000},{id:'big',label:'Big SUP',available:1,price:1000}]},user:{id:1},requestId:null,issueInquiry:null,pendingRentalMemory:null,batteryCatamarans:[],rentalPriceManual:false,rentalPricePlan:'hour',window:{},localTime:()=> '2026-09-27T10:00',time:n=>new Date(n).toISOString(),compactDuration:Desk.duration,money,text:elementText,crypto:{randomUUID:()=> 'same-request'},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},FormData:class{constructor(f){this.fields=f.elements;}*[Symbol.iterator](){for(const [name,el] of Object.entries(this.fields))if(!el.disabled)yield [name,el.value];}},document:{querySelectorAll:s=>s==='[data-duration]'?[duration]:[]}};
+ runInNewContext(functions(['pendingRental','populateCatamaranOptions','syncCatamaranField','updateRentalPrice','saveRentalDraft','openIssue','issueBooking'])+'\n'+lines.filter(l=>l.startsWith("for(const name of ['equipment'")||l.startsWith("$('#issue-form').elements.amount.addEventListener")||l.startsWith("for(const b of document.querySelectorAll('[data-duration]')")).join('\n'),context);
  return {context,form,nodes,storage,duration};
 }
 
@@ -94,7 +96,8 @@ test('Global search includes an active rental from another tab despite the overd
  const row={id:17,name:'Иван',phone:'+79001112233',equipment:'sup',expected_return:2000,returned:null};
  const results=new Element(),focus={};const selected={scrollIntoView:options=>{focus.scroll=options;},querySelector:()=>({focus:()=>{focus.focused=true;}})};
  const context={URLSearchParams,location:{search:''},Desk,data:{active:[row],dayRentals:[row],fleet:[{id:'sup',label:'SUP'}]},activeQuery:'Иван',activeFilter:'overdue',deskView:'bookings',expandedRental:null,searchResults:{rentals:[row],bookings:[],clients:[{name:'Иван',phone:'79001112233'}],cafe:[]},serverNow:()=>1000,shortTime:()=> '12:00',text:elementText,money,$:s=>s==='#desk-results'?results:selected,renderList:()=>{focus.rendered=true;},switchDesk:view=>{context.deskView=view;},requestAnimationFrame:fn=>fn(),document:{createElement:tag=>new Element(tag)}};
- runInNewContext(functions(['searchActiveRentals','openSearchRental','renderSearch']),context);context.renderSearch();
+ context.rentalStage='all';
+ runInNewContext(lines.find(l=>l.startsWith('const isPaidWaitingDeparture='))+'\n'+functions(['waitingRows','searchActiveRentals','openSearchRental','renderSearch']),context);context.renderSearch();
  assert.equal(results.children.filter(el=>el.textContent.startsWith('На воде')).length,1);
  assert.ok(results.children.some(el=>el.textContent.includes('новая аренда')));
  await results.children[0].onclick();assert.equal(context.deskView,'work');assert.equal(context.activeFilter,'all');assert.equal(context.expandedRental,17);assert.equal(context.activeQuery,'Иван');assert.equal(focus.focused,true);assert.equal(focus.rendered,true);
@@ -104,11 +107,11 @@ test('Both return controls disclose the surcharge and history shows the amount b
  const history=new Element(),r={id:17,name:'Иван',equipment:'sup',quantity:1,extension_due:125050,expected_return:2000,departed:'2026-09-27T10:00',phone:'79001112233',paid:100000};
  const nodes={'#rental-history-list':history,'#rental-history-day':new Element(),'#report-day':{value:'2026-09-27'},'#rental-history-count':new Element()};
  const context={URLSearchParams,location:{search:''},window:{},text:elementText,money,$:s=>nodes[s],Desk,data:{dayRentals:[r],fleet:[{id:'sup',label:'SUP'}]},activeQuery:'',historyFilter:'all',user:{role:'staff'},time:()=> '10:00',shortTime:()=> '12:00',returnRental:()=>{}};
- runInNewContext(functions(['returnAmount','returnLabel','setReturnButton','renderDayRentals']),context);
+ runInNewContext(lines.find(l=>l.startsWith('const isPaidWaitingDeparture='))+'\n'+functions(['rentalHistoryStatus','returnAmount','returnLabel','setReturnButton','renderDayRentals']),context);
  const waterButton=new Element('button');context.setReturnButton(waterButton,r);context.renderDayRentals();
  const details=history.children[0].children[1],historyButton=details.children.find(el=>el.tag==='button');
- assert.equal(historyButton.attributes['aria-label'],waterButton.attributes['aria-label']);assert.match(historyButton.attributes['aria-label'],/Вернулся · принять/);assert.match(historyButton.textContent,/1\s?250,5/);assert.match(details.textContent,/К доплате при возврате/);
- assert.ok(waterButton.classes.has('has-surcharge'));context.setReturnButton(waterButton,{extension_due:0});assert.equal(waterButton.textContent,'Вернулся');assert.ok(!waterButton.classes.has('has-surcharge'));
+ assert.equal(historyButton.attributes['aria-label'],waterButton.attributes['aria-label']);assert.match(historyButton.attributes['aria-label'],/Вернулись · доплата/);assert.match(historyButton.textContent,/1\s?250,5/);assert.match(details.textContent,/К доплате при возврате/);
+ assert.ok(waterButton.classes.has('has-surcharge'));context.setReturnButton(waterButton,{extension_due:0});assert.equal(waterButton.textContent,'Вернулись');assert.ok(!waterButton.classes.has('has-surcharge'));
 });
 
 test('Rental request reports lost responses in Russian, never retries, and preserves validation errors',async()=>{

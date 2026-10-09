@@ -6,6 +6,7 @@
 #include <Preferences.h>
 #include <NimBLEDevice.h>
 #include <cJSON.h>
+#include <esp_timer.h>
 #include <esp_ota_ops.h>
 #include <mbedtls/base64.h>
 #include <mbedtls/md.h>
@@ -15,14 +16,16 @@
 #include <freertos/semphr.h>
 
 #include "TitanatDecoder.h"
+#include "BatteryTiming.h"
 
 namespace {
 constexpr uint32_t kFreshMs = 45000;
 constexpr uint32_t kPollMs = 15000;
+constexpr uint32_t kDisconnectedHeartbeatMs = 5000;
 constexpr uint32_t kCommandGapMs = 400;
 constexpr uint32_t kWifiTrialMs = 120000;
 constexpr size_t kMaxControlResponse = 8192;
-constexpr char kFirmwareVersion[] = "1.1.2";
+constexpr char kFirmwareVersion[] = "1.1.3";
 constexpr uint8_t kCommands[] = {0x90, 0x93, 0x94, 0x95, 0x96, 0x98, 0x56};
 constexpr char kApiPath[] = "/api/devices/battery-telemetry";
 constexpr char kRootCa[] PROGMEM = R"CERT(
@@ -98,7 +101,6 @@ uint32_t lastTemperaturesAt = 0;
 uint32_t lastTemperatureCountAt = 0;
 uint32_t lastAlarmsAt = 0;
 uint32_t lastNameAt = 0;
-uint32_t uptimeBootAt = 0;
 uint32_t sequence = 0;
 uint8_t commandIndex = 0;
 titanat::Values values;
@@ -113,7 +115,21 @@ int8_t bleRssi = -127;
 char bootId[17] = {};
 volatile bool disconnectedEvent = false;
 volatile uint32_t lastBleSeenAt = 0;
+battery_timing::DisconnectAge bmsDisconnectAge;
+portMUX_TYPE bmsDisconnectMux = portMUX_INITIALIZER_UNLOCKED;
+char boundAddressForDisconnect[18] = {};
 SemaphoreHandle_t dataMutex = nullptr;
+
+uint64_t monotonicMs() { return uint64_t(esp_timer_get_time()) / 1000; }
+
+void setDisconnectBinding(const String &address) {
+  char snapshot[18] = {};
+  address.toCharArray(snapshot, sizeof(snapshot));
+  portENTER_CRITICAL(&bmsDisconnectMux);
+  memcpy(boundAddressForDisconnect, snapshot, sizeof(snapshot));
+  bmsDisconnectAge.resetBinding();
+  portEXIT_CRITICAL(&bmsDisconnectMux);
+}
 
 bool timeReady();
 void beginWifi();
@@ -175,6 +191,10 @@ void clearTelemetryLocked(bool connected) {
   lastAlarmsAt = 0;
   lastNameAt = 0;
   connectedAt = connected ? millis() : 0;
+  portENTER_CRITICAL(&bmsDisconnectMux);
+  if (connected) bmsDisconnectAge.connected();
+  else bmsDisconnectAge.resetBinding();
+  portEXIT_CRITICAL(&bmsDisconnectMux);
   bleRssi = -127;
 }
 
@@ -245,7 +265,21 @@ class ClientEvents final : public NimBLEClientCallbacks {
       xSemaphoreGive(dataMutex);
     }
   }
-  void onDisconnect(NimBLEClient *, int) override { disconnectedEvent = true; }
+  void onDisconnect(NimBLEClient *disconnectedClient, int) override {
+    if (!disconnectedClient) return;
+    if (disconnectedClient->isConnected()) return;
+    String peer = disconnectedClient->getPeerAddress().toString().c_str();
+    peer.toLowerCase();
+    char peerAddress[18] = {};
+    peer.toCharArray(peerAddress, sizeof(peerAddress));
+    const uint64_t eventAt = monotonicMs();
+    portENTER_CRITICAL(&bmsDisconnectMux);
+    const bool matchesCurrentBinding = peer.length() == 17 && battery_timing::matchesBinding(
+        disconnectedClient == client, peerAddress, boundAddressForDisconnect);
+    if (matchesCurrentBinding) bmsDisconnectAge.disconnected(eventAt);
+    portEXIT_CRITICAL(&bmsDisconnectMux);
+    if (matchesCurrentBinding) disconnectedEvent = true;
+  }
 };
 ClientEvents clientEvents;
 
@@ -433,10 +467,19 @@ String buildPayload(uint32_t now) {
   if (WiFi.status() == WL_CONNECTED) body += String(WiFi.RSSI()); else body += "null";
   body += ",\"bleRssi\":";
   if (bleRssi != -127) body += String(bleRssi); else body += "null";
-  body += ",\"uptimeSeconds\":" + String((now - uptimeBootAt) / 1000);
+  const uint64_t uptimeMs = monotonicMs();
+  body += ",\"uptimeSeconds\":" + String((unsigned long long)(uptimeMs / 1000));
+  body += ",\"uptimeMs\":" + String((unsigned long long)uptimeMs);
   body += ",\"localIp\":";
   if (WiFi.status() == WL_CONNECTED) body += '"' + jsonEscape(ip) + '"'; else body += "null";
   body += ",\"bmsConnected\":" + String(peerMatches ? "true" : "false");
+  uint32_t bmsDisconnectedAgeMs = 0;
+  const uint64_t payloadMonotonicMs = monotonicMs();
+  portENTER_CRITICAL(&bmsDisconnectMux);
+  const bool hasBmsDisconnectedAge = bmsDisconnectAge.ageMs(peerMatches, payloadMonotonicMs, bmsDisconnectedAgeMs);
+  portEXIT_CRITICAL(&bmsDisconnectMux);
+  body += ",\"bmsDisconnectedAgeMs\":";
+  if (hasBmsDisconnectedAge) body += String(bmsDisconnectedAgeMs); else body += "null";
   if (!summaryFresh) {
     body += ",\"telemetry\":null}";
     return body;
@@ -1112,6 +1155,7 @@ void handleCommand(String line) {
       clearTelemetryLocked(false);
       lastBleSeenAt = 0;
       boundAddress = address;
+      setDisconnectBinding(boundAddress);
       xSemaphoreGive(dataMutex);
       lastHeartbeatAt = 0;
     }
@@ -1177,6 +1221,7 @@ void setup() {
   prefs.remove("command-done-id");
   loadWifi();
   boundAddress = prefs.getString("bms-address", "");
+  setDisconnectBinding(boundAddress);
   monitorEnabled = prefs.getBool("monitor", false);
   serverOrigin = prefs.getString("server-url", "");
   deviceId = prefs.getString("device-id", "");
@@ -1202,7 +1247,6 @@ void setup() {
   uint32_t randomParts[4];
   for (uint8_t i = 0; i < 4; ++i) randomParts[i] = esp_random();
   snprintf(bootId, sizeof(bootId), "%08lx%08lx", (unsigned long)randomParts[0], (unsigned long)randomParts[1]);
-  uptimeBootAt = millis();
   WiFi.mode(WIFI_STA);
   if (!wifiSsid.isEmpty()) beginWifi();
   NimBLEDevice::init("START-BMS-GATEWAY");
@@ -1230,6 +1274,12 @@ void loop() {
     txCharacteristic = nullptr;
     cycleActive = false;
     lastPollStartedAt = 0;
+    uint32_t disconnectAgeMs = 0;
+    const uint64_t eventMonotonicMs = monotonicMs();
+    portENTER_CRITICAL(&bmsDisconnectMux);
+    const bool isTrackedDisconnect = bmsDisconnectAge.ageMs(false, eventMonotonicMs, disconnectAgeMs);
+    portEXIT_CRITICAL(&bmsDisconnectMux);
+    if (isTrackedDisconnect) attemptPost();
   }
   if (wifiTrialActive && uint32_t(now - wifiTrialStartedAt) >= kWifiTrialMs) rollbackWifiTrial();
   if (WiFi.status() != WL_CONNECTED && !wifiSsid.isEmpty() && uint32_t(now - lastWifiAttemptAt) >= 15000) beginWifi();
@@ -1253,8 +1303,9 @@ void loop() {
       lastPollStartedAt = 0;
     }
   }
+  const uint32_t heartbeatInterval = monitorEnabled && !peerBoundAfterConnect ? kDisconnectedHeartbeatMs : kPollMs;
   if (serverOrigin.length() && boundAddress.length() == 17 && WiFi.status() == WL_CONNECTED && !cycleActive &&
-      uint32_t(millis() - lastHeartbeatAt) >= kPollMs) attemptPost();
+      uint32_t(millis() - lastHeartbeatAt) >= heartbeatInterval) attemptPost();
   if (!peerBoundAfterConnect) startPresenceScan();
   delay(5);
 }

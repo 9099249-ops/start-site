@@ -19,19 +19,23 @@ export function departRental(store,fleet,body,user,now=Date.now()){
   }
   if(row.revision!==body.revision)fail('Аренда изменилась. Обновите список.');
   if(row.initial_due!==0||store.rentalTerminal?.locked(row.id))fail('Сначала завершите оплату на кассе.');
+  const sensor=body.batteryTripId!==undefined;
+  if(sensor&&(!store.batteryTrips||typeof body.batteryTripId!=='string'||!Number.isSafeInteger(body.batteryTripRevision)))fail('Обновите сигнал отплытия.',400);
+  const start=sensor?store.batteryTrips.departureEvidence(row,body,now):now;
   const inquiry=store.db.prepare('SELECT details FROM inquiries WHERE rental_id=?').get(row.id);
   const plan=inquiry?JSON.parse(inquiry.details).plan:null;
-  const duration=row.expected_return-localStamp(row.departed),expected=['day','takeaway'].includes(plan)?row.expected_return:now+duration;
+  const duration=row.expected_return-localStamp(row.departed),expected=['day','takeaway'].includes(plan)?row.expected_return:start+duration;
   if(!Number.isSafeInteger(duration)||duration<=0)fail('Не удалось определить оплаченный срок. Проверьте аренду.');
-  if(expected<=now)fail('Плановый срок возврата уже прошёл. Проверьте бронь до отплытия.');
+  if(expected<=now&&!sensor)fail('Плановый срок возврата уже прошёл. Проверьте бронь до отплытия.');
   // A delayed departure must still fit the following confirmed reservations.
-  assertCapacity(store.db,fleet,{equipment:row.equipment,quantity:row.quantity,start:now,end:expected},{ignoreRental:row.id,now,close:store.sms?.content?.live().close});
-  const departed=new Date(now+10800000).toISOString().slice(0,16);
-  store.db.prepare('UPDATE rentals SET departure_pending=0,departed_at=?,departed=?,expected_return=?,revision=revision+1 WHERE id=?').run(now,departed,expected,row.id);
+  assertCapacity(store.db,fleet,{equipment:row.equipment,quantity:row.quantity,start,end:expected},{ignoreRental:row.id,now,close:store.sms?.content?.live().close});
+  const departed=new Date(start+10800000).toISOString().slice(0,16);
+  store.db.prepare('UPDATE rentals SET departure_pending=0,departed_at=?,departed=?,expected_return=?,revision=revision+1 WHERE id=?').run(start,departed,expected,row.id);
   const before={departure_pending:1,departed:row.departed,expected_return:row.expected_return};
-  const after={departure_pending:0,departed_at:now,departed,expected_return:expected};
+  const after={departure_pending:0,departed_at:start,departed,expected_return:expected,...(sensor?{battery_trip_id:body.batteryTripId,confirmed_at:now}:{})};
   store.db.prepare('INSERT INTO rental_changes(rental_id,actor,created,reason,before_json,after_json) VALUES(?,?,?,?,?,?)').run(row.id,user.id,now,'Отплытие',JSON.stringify(before),JSON.stringify(after));
   store.audit(user,'rental_departure',row.id);
-  return {id:row.id,departedAt:now,expectedReturn:expected,revision:row.revision+1};
+  store.batteryTrips?.confirmedRental(row.id,start,now,user);
+  return {id:row.id,departedAt:start,expectedReturn:expected,revision:row.revision+1};
  });
 }

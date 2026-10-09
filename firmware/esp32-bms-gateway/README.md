@@ -4,7 +4,7 @@ The ESP32 reads the Titanat BLE telemetry frames and posts snapshots to the STAR
 
 ## Build and upload
 
-Use Arduino IDE with ESP32 boards package **3.3.12**, **NimBLE-Arduino 2.5.1** from Library Manager, board **ESP32 Dev Module**, partition scheme **min_spiffs** (4 MB flash), and 115200 baud for Serial Monitor. Open `esp32-bms-gateway.ino` and upload it over USB. Version 1.1.0 is the first USB-installed control-capable bridge; version 1.1.1 is the OTA test release; version 1.1.2 stores complete command acknowledgements atomically in bounded NVS records.
+Use Arduino IDE with ESP32 boards package **3.3.12**, **NimBLE-Arduino 2.5.1** from Library Manager, board **ESP32 Dev Module**, partition scheme **min_spiffs** (4 MB flash), and 115200 baud for Serial Monitor. Open `esp32-bms-gateway.ino` and upload it over USB. Version 1.1.0 is the first USB-installed control-capable bridge; version 1.1.1 is the OTA test release; version 1.1.2 stores complete command acknowledgements atomically in bounded NVS records; version 1.1.3 adds exact monotonic BMS disconnect age and 64-bit millisecond uptime telemetry. The signed release in `releases/` is 1.1.3, built and signature-verified on 2026-10-09; it has not yet been installed or physically tested on a board. To obtain callback-timed disconnect events, update to 1.1.3 through the existing signed OTA flow or USB. Older firmware can only report the server-observed disconnect time.
 
 To compile from a terminal with Arduino CLI:
 
@@ -55,7 +55,7 @@ The protocol is the captured Titanat `FA` frame variant: 13 bytes, header `FA`, 
 
 The `0x93` cycle-like byte and undocumented `0x94` bytes are not exposed as decoded values. This battery capture's cell count is four while `0x95` returns multiple three-cell fragments; only the first four indexed slots are reported. Fields older than 45 seconds become null. A stale or missing `0x90` makes the whole `telemetry` object null. When the BMS is unavailable, the gateway continues to send a heartbeat with `bmsConnected: false` and null telemetry while Wi-Fi and server access are available.
 
-Each boot gets a random hexadecimal `bootId`. `sequence` increments only when a valid `0x90` frame is decoded. Every poll or heartbeat attempt serializes a fresh snapshot and age; retries use the same sequence until another valid SOC sample arrives, allowing the server to ignore duplicates without refreshing the measurement time. A null telemetry heartbeat uses age zero because it contains no measurement. The server receives the token only in an HTTPS Bearer authorization header. The endpoint and token are optional; BLE polling works without server configuration. The firmware reports `controlCapabilityVersion: 1` for dashboard-side capability detection and `bmsLastSeenAgeMs` while the bound BMS is visible in connection events, notifications, or advertisements; absence from a BLE scan is not proof of battery departure.
+Each boot gets a random hexadecimal `bootId`. `uptimeSeconds` remains for compatibility; `uptimeMs` carries the exact unsigned monotonic milliseconds since boot. `sequence` increments only when a valid `0x90` frame is decoded. Every poll or heartbeat attempt serializes a fresh snapshot and age; retries use the same sequence until another valid SOC sample arrives, allowing the server to ignore duplicates without refreshing the measurement time. A null telemetry heartbeat uses age zero because it contains no measurement. While monitoring a disconnected BMS, the gateway posts a heartbeat every five seconds and posts once immediately after a tracked disconnect callback, before starting reconnect work, when Wi-Fi and server configuration are ready. Normal connected polling remains 15 seconds. `bmsDisconnectedAgeMs` is non-null only after this boot's currently bound BMS has connected and subsequently disconnected; its age starts in the NimBLE disconnect callback and resets on reconnection or when the binding changes. It is null on startup without a BMS connection, while connected, or before a disconnect callback. The server receives the token only in an HTTPS Bearer authorization header. The endpoint and token are optional; BLE polling works without server configuration. The firmware reports `controlCapabilityVersion: 1` for dashboard-side capability detection and `bmsLastSeenAgeMs` while the bound BMS is visible in connection events, notifications, or advertisements; absence from a BLE scan is not proof of battery departure.
 
 The capture confirms the checksum and fields above for this BMS. The `FA` transport differs from standard Daly `A5` UART frames; other model revisions may use different payload layouts. The root CA certificate must be replaced if the public endpoint changes certificate authority.
 
@@ -72,4 +72,11 @@ The same board was then USB-upgraded to the 1.1.0 bridge and updated through the
 ```powershell
 g++ -std=c++11 -Wall -Wextra -pedantic firmware/esp32-bms-gateway/tests/test_titanat_decoder.cpp -o $env:TEMP\titanat-decoder-test.exe
 & $env:TEMP\titanat-decoder-test.exe
+```
+
+`tests/test_battery_timing.cpp` verifies exact millisecond elapsed time, unsigned wraparound, 64-bit monotonic time across the 32-bit boundary, first-connect gating, disconnect timestamp retention, reset on reconnection, and client/peer matching when the BMS binding changes. Disconnect age is omitted after 24 hours rather than wrapping to a falsely fresh value; uptime remains monotonic. Run the timing host test with:
+
+```powershell
+g++ -std=c++11 -Wall -Wextra -pedantic firmware/esp32-bms-gateway/tests/test_battery_timing.cpp -o $env:TEMP\battery-timing-test.exe
+& $env:TEMP\battery-timing-test.exe
 ```

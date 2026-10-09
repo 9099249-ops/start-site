@@ -11,7 +11,7 @@ const BMS='41:18:12:01:37:50';
 const isoLocal=ms=>new Date(ms+10800000).toISOString().slice(0,16);
 function fixture(t){
  const admin=new AdminStore(':memory:');admin.db.exec("INSERT INTO admin_users VALUES(1,'admin','admin','unused'),(2,'station','staff','unused'),(3,'schedule','staff','unused')");
- admin.db.exec('ALTER TABLE rentals ADD COLUMN departure_pending INTEGER NOT NULL DEFAULT 0');
+ if(!admin.db.prepare('PRAGMA table_info(rentals)').all().some(column=>column.name==='departure_pending'))admin.db.exec('ALTER TABLE rentals ADD COLUMN departure_pending INTEGER NOT NULL DEFAULT 0');
  admin.db.exec("CREATE TABLE guest_bills(id INTEGER PRIMARY KEY,paid_at INTEGER,cancelled_at INTEGER);CREATE TABLE guest_bill_lines(id INTEGER PRIMARY KEY,bill_id INTEGER,kind TEXT,source_id INTEGER,amount INTEGER)");
  const users={admin:{id:1,role:'admin'},staff:{id:2,role:'staff'},schedule:{id:3,role:'staff',scheduleOnly:true}};admin.user=token=>users[token]||null;
  const battery=new BatteryStateStore(admin),trips=new BatteryTripStore(battery);t.after(()=>admin.close());
@@ -22,7 +22,13 @@ function fixture(t){
   if(guestBill){admin.db.prepare('INSERT INTO guest_bills(id,paid_at,cancelled_at) VALUES(?,?,?)').run(guestBill.id,guestBill.paidAt,guestBill.cancelledAt);admin.db.prepare("INSERT INTO guest_bill_lines(bill_id,kind,source_id,amount) VALUES(?,'rental',?,10000)").run(guestBill.id,id);}
   return id;
  };
- const heartbeat=(dev,at,bmsAge=0)=>battery.ingest({deviceId:dev.device.deviceId,bootId:'deadbeef',sequence:0,measurementAgeMs:0,bmsId:dev.device.bmsId,bmsConnected:bmsAge!==null,telemetry:null,bmsLastSeenAgeMs:bmsAge,controlCapabilityVersion:1},dev.token,at);
+ const packetState=new Map();
+ const heartbeat=(dev,at,{connected=true,disconnectAgeMs=0,bootId='deadbeef'}={})=>{
+  const previous=packetState.get(dev.device.deviceId)||{sequence:0,bootId};
+  const sequence=previous.bootId===bootId?previous.sequence+1:0;
+  packetState.set(dev.device.deviceId,{sequence,bootId});
+  return battery.ingest({deviceId:dev.device.deviceId,bootId,sequence,uptimeSeconds:Math.floor(at/1000),measurementAgeMs:0,bmsId:dev.device.bmsId,bmsConnected:connected,telemetry:null,bmsLastSeenAgeMs:connected?0:disconnectAgeMs,bmsDisconnectedAgeMs:connected?undefined:disconnectAgeMs,controlCapabilityVersion:1},dev.token,at);
+ };
  return {admin,battery,trips,users,device,rental,heartbeat};
 }
 function body(action,extra={}){return {action,requestId:randomUUID(),...extra};}
@@ -54,7 +60,7 @@ test('deferred unpaid guest-bill rental is ineligible even with zero initial due
 test('paid pending-departure rental remains eligible but cannot accrue overdue quote or confirm sensor departure until the existing departure action',t=>{
  const f=fixture(t),now=Date.now(),device=f.device(),rental=f.rental(now,{departurePending:true,extensionDue:1234});
  const armed=f.trips.manage(body('arm',{label:'Сашин',rentalId:rental}),f.users.admin,now);assert.equal(armed.trip.departurePending,true);assert.ok(armed.trip.rentalRevision>=0);
- f.heartbeat(device,now+1000,0);f.trips.tick(now+46000);const pending=f.trips.overview(f.users.admin,now+46000).catamarans[0].trip;
+ f.heartbeat(device,now+1000);f.heartbeat(device,now+16000,{connected:false,disconnectAgeMs:15000});f.trips.tick(now+31000);const pending=f.trips.overview(f.users.admin,now+31000).catamarans[0].trip;
  assert.equal(pending.state,'departure-candidate');assert.equal(pending.departurePending,true);assert.equal(pending.quoteMinutes,0);assert.equal(pending.overtimeQuoteRub,0);assert.equal(pending.existingDueRub,12.34);assert.equal(pending.dueRub,12.34);
  assert.throws(()=>f.trips.manage(body('confirm-departure',{tripId:pending.id,revision:pending.revision}),f.users.admin,now+46001),{status:409});
  assert.equal(f.admin.db.prepare('SELECT state FROM battery_trips WHERE id=?').get(pending.id).state,'departure-candidate');
@@ -66,35 +72,35 @@ test('paid pending-departure rental remains eligible but cannot accrue overdue q
  assert.equal(JSON.stringify(f.admin.db.prepare('SELECT * FROM payments WHERE rental_id=?').all(rental)),paymentsBefore);
 });
 
-test('gateway offline cannot prove departure; post-arm BMS wake starts 45-second absence window and creates a candidate only',t=>{
+test('gateway offline or Wi-Fi silence cannot prove departure; explicit connected-loss evidence must persist 15 seconds',t=>{
  const f=fixture(t),now=Date.now(),device=f.device('Сашин'),rental=f.rental(now),
   armed=f.trips.manage(body('arm',{label:'Сашин',rentalId:rental}),f.users.admin,now);
- f.heartbeat(device,now+1000,0);f.trips.tick(now+45999);
+ f.heartbeat(device,now+1000);f.heartbeat(device,now+15999,{connected:false,disconnectAgeMs:14998});f.trips.tick(now+15999);
  assert.equal(f.admin.db.prepare('SELECT state FROM battery_trips WHERE id=?').get(armed.trip.id).state,'armed');
- f.trips.tick(now+46000);assert.equal(f.admin.db.prepare('SELECT state FROM battery_trips WHERE id=?').get(armed.trip.id).state,'departure-candidate');
- const row=f.admin.db.prepare('SELECT detected_departure_at FROM battery_trips WHERE id=?').get(armed.trip.id);assert.equal(row.detected_departure_at,now+1000);
- const offline=f.device('Наташин','41:18:12:01:37:51',{staleAfterSeconds:30}),rental2=f.rental(now+50000);f.heartbeat(offline,now+50000,0);const armed2=f.trips.manage(body('arm',{label:'Наташин',rentalId:rental2}),f.users.admin,now+50001);
- f.heartbeat(offline,now+50002,0);f.trips.tick(now+95002);assert.equal(f.admin.db.prepare('SELECT state FROM battery_trips WHERE id=?').get(armed2.trip.id).state,'armed');
+ f.heartbeat(device,now+16001,{connected:false,disconnectAgeMs:15000});f.heartbeat(device,now+31001,{connected:false,disconnectAgeMs:15000});f.trips.tick(now+31001);assert.equal(f.admin.db.prepare('SELECT state FROM battery_trips WHERE id=?').get(armed.trip.id).state,'departure-candidate');
+ const row=f.admin.db.prepare('SELECT detected_departure_at FROM battery_trips WHERE id=?').get(armed.trip.id);assert.equal(row.detected_departure_at,now+1001);
+ const offline=f.device('Наташин','41:18:12:01:37:51',{staleAfterSeconds:30}),rental2=f.rental(now+50000);f.heartbeat(offline,now+50000);const armed2=f.trips.manage(body('arm',{label:'Наташин',rentalId:rental2}),f.users.admin,now+50001);
+ f.trips.tick(now+95002);assert.equal(f.admin.db.prepare('SELECT state FROM battery_trips WHERE id=?').get(armed2.trip.id).state,'armed');
  assert.equal(offline.device.catamaranLabel,'Наташин');
 });
 
 test('candidate confirm/reject is revisioned and idempotent; return evidence never returns or charges the rental',t=>{
  const f=fixture(t),now=Date.now(),device=f.device(),rental=f.rental(now,{extensionDue:1234}),armed=f.trips.manage(body('arm',{label:'Сашин',rentalId:rental}),f.users.admin,now);
- f.heartbeat(device,now+1000,0);f.trips.tick(now+46000);const candidate=f.trips.overview(f.users.staff,now+46000).catamarans[0].trip;assert.equal(candidate.state,'departure-candidate');
+ f.heartbeat(device,now+1000);f.heartbeat(device,now+16000,{connected:false,disconnectAgeMs:15000});f.trips.tick(now+31000);const candidate=f.trips.overview(f.users.staff,now+31000).catamarans[0].trip;assert.equal(candidate.state,'departure-candidate');
  const rejectedBody=body('dismiss',{tripId:candidate.id,revision:candidate.revision}),rejected=f.trips.manage(rejectedBody,f.users.staff,now+46001),retry=f.trips.manage(rejectedBody,f.users.staff,now+46002);assert.equal(rejected.trip.state,'armed');assert.equal(retry.duplicate,true);
  assert.throws(()=>f.trips.manage(body('confirm-departure',{tripId:candidate.id,revision:candidate.revision}),f.users.admin,now+46003),{status:409});
- f.heartbeat(device,now+47000,0);f.trips.tick(now+92000);const c2=f.trips.overview(f.users.staff,now+92000).catamarans[0].trip;
- const departed=f.trips.manage(body('confirm-departure',{tripId:c2.id,revision:c2.revision}),f.users.admin,now+92001);assert.equal(departed.trip.state,'away');
- f.heartbeat(device,now+93000,0);f.trips.tick(now+93000);const back=f.trips.overview(f.users.staff,now+93000).catamarans[0].trip;assert.equal(back.state,'return-candidate');
+ f.heartbeat(device,now+47000);f.heartbeat(device,now+62000,{connected:false,disconnectAgeMs:15000});f.trips.tick(now+77000);const c2=f.trips.overview(f.users.staff,now+77000).catamarans[0].trip;
+ const departed=f.trips.manage(body('confirm-departure',{tripId:c2.id,revision:c2.revision}),f.users.admin,now+77001);assert.equal(departed.trip.state,'away');
+ f.heartbeat(device,now+78000);f.trips.tick(now+78000);const back=f.trips.overview(f.users.staff,now+78000).catamarans[0].trip;assert.equal(back.state,'return-candidate');
  const rentalsBefore=JSON.stringify(f.admin.db.prepare('SELECT id,returned,extension_due,revision FROM rentals WHERE id=?').get(rental));const paymentsBefore=f.admin.db.prepare('SELECT count(*) n FROM payments WHERE rental_id=?').get(rental).n;
- const returned=f.trips.manage(body('confirm-return',{tripId:back.id,revision:back.revision}),f.users.admin,now+93001);assert.equal(returned.trip.state,'returned');
+ const returned=f.trips.manage(body('confirm-return',{tripId:back.id,revision:back.revision}),f.users.admin,now+78001);assert.equal(returned.trip.state,'returned');
  assert.equal(JSON.stringify(f.admin.db.prepare('SELECT id,returned,extension_due,revision FROM rentals WHERE id=?').get(rental)),rentalsBefore);assert.equal(f.admin.db.prepare('SELECT count(*) n FROM payments WHERE rental_id=?').get(rental).n,paymentsBefore);
  assert.equal(f.admin.db.prepare('SELECT returned FROM rentals WHERE id=?').get(rental).returned,null);assert.equal(armed.trip.id,returned.trip.id);
 });
 
 test('overdue quote uses existing rental tariff and 30-minute blocks without writing rent or payment rows',t=>{
  const f=fixture(t),now=Date.now(),rental=f.rental(now,{extensionDue:1234}),device=f.device(),before=JSON.stringify(f.admin.db.prepare('SELECT id,returned,extension_due,revision FROM rentals WHERE id=?').get(rental));
- const armed=f.trips.manage(body('arm',{label:'Сашин',rentalId:rental}),f.users.admin,now);f.heartbeat(device,now,0);
+ const armed=f.trips.manage(body('arm',{label:'Сашин',rentalId:rental}),f.users.admin,now);f.heartbeat(device,now);
  const view=f.trips.overview(f.users.admin,now+3600001).catamarans[0].trip;
  const late=Math.max(0,Math.ceil((now+3600001-(now-60000))/60000)),minutes=Math.ceil(late/30)*30;
  assert.equal(view.quoteMinutes,minutes);assert.equal(view.overtimeQuoteRub,rentalPrice(f.admin,'catamaran',1,minutes,null)/100);assert.equal(view.existingDueRub,12.34);assert.equal(view.dueRub,12.34+view.overtimeQuoteRub);

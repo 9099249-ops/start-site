@@ -1,4 +1,4 @@
-СТАРТ: восстановление или замена ESP32, прошивка 1.1.2
+СТАРТ: восстановление или замена ESP32, прошивка 1.1.3
 
 Подходит классическая ESP32 Dev Module (ESP32-D0WD), 4 МБ flash.
 Не подходит для ESP32-C3, S2, S3 и других чипов: им нужен свой образ.
@@ -10,8 +10,8 @@
 
 $batteryTool = Get-ChildItem -LiteralPath "$env:LOCALAPPDATA\Arduino15\packages\esp32\tools\esptool_py" -Filter esptool.exe -Recurse | Select-Object -First 1
 $batteryPort = Read-Host 'COM-порт ESP32, например COM4'
-$batteryImage = Join-Path $env:USERPROFILE 'Downloads\START-ESP32-1.1.2-recovery.bin'
-if ((Get-FileHash -LiteralPath $batteryImage -Algorithm SHA256).Hash.ToLowerInvariant() -ne '311acffc76f204ac732a923e40142725ea6e17cd6e39990c07faa7bfd8684740') { throw 'Контрольная сумма файла не совпадает' }
+$batteryImage = Join-Path $env:USERPROFILE 'Downloads\START-ESP32-1.1.3-recovery.bin'
+if ((Get-FileHash -LiteralPath $batteryImage -Algorithm SHA256).Hash.ToLowerInvariant() -ne '3b3f6b39e68bb71182fad5b8d9257afa1fe80957e933dbf947a5931619649a19') { throw 'Контрольная сумма файла не совпадает' }
 & $batteryTool.FullName --chip esp32 --port $batteryPort --baud 460800 write-flash 0x0 $batteryImage
 
 Если файл сохранён не в «Загрузки», измените путь $batteryImage. Если подключение не начинается, удерживайте кнопку BOOT при начале загрузки и отпустите после соединения.

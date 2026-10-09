@@ -1,6 +1,8 @@
 import {readFileSync} from 'node:fs';
 import {createHash,randomBytes,timingSafeEqual} from 'node:crypto';
 import {isIP} from 'node:net';
+import {estimateChargeMinutes} from './battery-charge-estimate.mjs';
+import {batteryPresence} from './battery-presence.mjs';
 
 const DAY=86400000,RETENTION=30*DAY;
 const CATAMARANS=['Сашин','Наташин','С серой крышей'];
@@ -43,7 +45,17 @@ export class BatteryStateStore{
   const stale=!row.enabled||!current||now-current.measured_at>row.stale_after_seconds*1000;
   if(telemetry){const elapsed=Math.max(0,now-current.received_at);telemetry.fieldAgesMs=Object.fromEntries(Object.entries(telemetry.fieldAgesMs).map(([k,v])=>[k,v===null?null:v+elapsed]));telemetry.alarms=telemetry.alarmMaskHex?Array.from(Buffer.from(telemetry.alarmMaskHex,'hex')).flatMap((byte,i)=>Array.from({length:8},(_,bit)=>byte&(1<<bit)?'BMS_BIT_'+(i*8+bit):null).filter(Boolean)):null;}
   const data={deviceId:row.device_id,name:row.name,catamaranLabel:row.catamaran_label,bmsId:row.bms_id,serialNumber:row.serial_number,capacityAh:row.capacity_ah,enabled:!!row.enabled,revision:row.revision,staleAfterSeconds:row.stale_after_seconds,bindingLocked:!!current||!!this.db.prepare('SELECT 1 FROM battery_history WHERE device_id=? LIMIT 1').get(row.device_id),lastSeenAt:row.last_seen_at,lastMeasuredAt:current?.measured_at??null,receivedAt:current?.received_at??null,online,stale,bmsConnected:health.bmsConnected??false,firmwareVersion:health.firmwareVersion??null,wifiRssi:health.wifiRssi??null,bleRssi:health.bleRssi??null,uptimeSeconds:health.uptimeSeconds??null,localIp:health.localIp??null,wifiSsid:health.wifiSsid??null,controlCapabilityVersion:health.controlCapabilityVersion??0,bmsLastSeenAt:health.bmsLastSeenAt??null,telemetry,estimate:null};
-  if(!stale&&online&&data.bmsConnected&&telemetry){const t=telemetry,capacity=row.capacity_ah??(t.socPercent>=5&&t.remainingCapacityAh>0?t.remainingCapacityAh/(t.socPercent/100):null);let minutes=null,kind=null;if(t.state==='charging'&&t.currentA>0&&capacity>0&&t.remainingCapacityAh!==null){minutes=(capacity-t.remainingCapacityAh)/t.currentA*60;kind='charge';}else if(t.state==='discharging'&&t.currentA<0&&t.remainingCapacityAh>0){minutes=t.remainingCapacityAh/Math.abs(t.currentA)*60;kind='discharge';}if(minutes!==null&&minutes>=0&&minutes<=10080&&(t.fieldAgesMs.status??Infinity)<=row.stale_after_seconds*1000)data.estimate={kind,minutes:Math.round(minutes),estimated:true,basis:row.capacity_ah!==null?'configured':'derived'};}
+  if(!stale&&online&&data.bmsConnected&&telemetry){
+   const t=telemetry,capacity=row.capacity_ah??(t.socPercent>=5&&t.remainingCapacityAh>0?t.remainingCapacityAh/(t.socPercent/100):null);
+   let minutes=null,kind=null;
+   if(t.state==='charging'&&t.currentA>0&&capacity>0&&t.remainingCapacityAh!==null){
+    const recent=this.db.prepare('SELECT measured_at,telemetry_json FROM battery_history WHERE device_id=? AND measured_at>=? AND measured_at<? ORDER BY measured_at DESC LIMIT 6').all(row.device_id,current.measured_at-300000,current.measured_at);
+    const samples=[];let previous=current.measured_at;
+    for(const sample of recent){if(previous-sample.measured_at>Math.max(90000,row.stale_after_seconds*1000))break;const value=JSON.parse(sample.telemetry_json);if((value.fieldAgesMs?.status??Infinity)>row.stale_after_seconds*1000)break;samples.push(value);previous=sample.measured_at;}
+    minutes=estimateChargeMinutes(t,capacity,samples);kind='charge';
+   }else if(t.state==='discharging'&&t.currentA<0&&t.remainingCapacityAh>0){minutes=t.remainingCapacityAh/Math.abs(t.currentA)*60;kind='discharge';}
+   if(minutes!==null&&minutes>=0&&minutes<=10080&&(t.fieldAgesMs.status??Infinity)<=row.stale_after_seconds*1000)data.estimate={kind,minutes:Math.round(minutes),estimated:true,basis:row.capacity_ah!==null?'configured':'derived'};
+  }
   return data;
  }
  list(user,now=Date.now()){owner(user);return {now,catamarans:[...CATAMARANS],devices:this.db.prepare('SELECT * FROM battery_devices ORDER BY name,device_id').all().map(r=>this.projection(r,now))};}
@@ -90,6 +102,8 @@ export class BatteryStateStore{
   health.controlCapabilityVersion=body.controlCapabilityVersion==null?0:number(body.controlCapabilityVersion,'Версия управления',0,1,true);
   health.wifiSsid=body.wifiSsid==null?null:text(body.wifiSsid,'Сеть Wi-Fi',32);
   const seenAge=optionalNumber(body.bmsLastSeenAgeMs,'Последний сигнал BMS',0,DAY,true);
+  const disconnectAge=optionalNumber(body.bmsDisconnectedAgeMs,'Возраст разрыва BMS',0,DAY,true);
+  const uptimeMs=optionalNumber(body.uptimeMs,'Монотонное время модуля',0,Number.MAX_SAFE_INTEGER,true);
   health.bmsLastSeenAt=seenAge===null?(bmsConnected?now:null):now-seenAge;
   if(health.localIp!==null&&(typeof health.localIp!=='string'||!isIP(health.localIp)))fail('Неверный IP-адрес.');
   const telemetry=body.telemetry==null?null:normalizeBatteryTelemetry(body.telemetry,age);
@@ -97,6 +111,10 @@ export class BatteryStateStore{
   if(telemetry&&(typeof body.measurementAgeMs!=='number'||sequence===0))fail('Укажите возраст и номер измерения.');
   const rate=this.rate.get(id);if(rate&&now-rate.since<60000&&rate.count>=60)fail('Слишком частые сообщения.',429);this.rate.set(id,rate&&now-rate.since<60000?{since:rate.since,count:rate.count+1}:{since:now,count:1});
   return this.tx(()=>{
+   const previousHealth=JSON.parse(this.row(id).health_json);
+   const presence=batteryPresence(previousHealth,{bootId,uptimeMs,uptimeSeconds:health.uptimeSeconds,bmsConnected,bmsDisconnectedAgeMs:disconnectAge},now);
+   if(!presence)return {ok:true,accepted:false,duplicate:true,receivedAt:now};
+   Object.assign(health,presence);
    this.db.prepare('UPDATE battery_devices SET last_seen_at=?,health_json=? WHERE device_id=?').run(now,JSON.stringify(health),id);
    let accepted=false,duplicate=false;
    if(telemetry){
