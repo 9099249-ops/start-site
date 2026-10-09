@@ -15,11 +15,17 @@ function declaration(name){
 }
 function functions(names){return names.map(declaration).join('\n');}
 class Element{
- constructor(tag='div',value=''){this.tag=tag;this.value=value;this.children=[];this.dataset={};this.listeners={};this.attributes={};this.classes=new Set();this.classList={add:n=>this.classes.add(n),remove:n=>this.classes.delete(n),toggle:(n,v)=>v?this.classes.add(n):this.classes.delete(n)};}
+ constructor(tag='div',value=''){this.tag=tag;this._value=value;this.children=[];this.dataset={};this.listeners={};this.attributes={};this.classes=new Set();this.classList={add:n=>this.classes.add(n),remove:n=>this.classes.delete(n),toggle:(n,v)=>v?this.classes.add(n):this.classes.delete(n)};}
+ get value(){if(this.tag==='select'){const selected=this.children.find(child=>child.selected);if(selected)return selected.value;}return this._value;}
+ set value(value){this._value=String(value??'');if(this.tag==='select'){let matched=false;for(const child of this.children){child.selected=!matched&&child.value===this._value;matched=matched||child.selected;}}}
+ get options(){return this.tag==='select'?this.children:undefined;}
+ get selectedOptions(){if(this.tag!=='select')return undefined;const selected=this.children.find(child=>child.selected)||this.children.find(child=>child.value===this._value);return selected?[selected]:[];}
+ get selected(){return !!this._selected;}
+ set selected(value){this._selected=!!value;if(this._selected&&this.parentElement?.tag==='select')for(const sibling of this.parentElement.children)if(sibling!==this)sibling._selected=false;}
  set textContent(value){this.valueText=String(value??'');this.children=[];}
  get textContent(){return (this.valueText||'')+this.children.map(c=>c.textContent).join(' ');}
- append(...children){this.children.push(...children);}
- replaceChildren(...children){this.valueText='';this.children=children;if(this.tag==='select')this.value=children.find(c=>!c.disabled)?.value||'';}
+ append(...children){for(const child of children)child.parentElement=this;this.children.push(...children);}
+ replaceChildren(...children){this.valueText='';this.children=children;for(const child of children)child.parentElement=this;if(this.tag==='select')this.value=children.find(c=>!c.disabled)?.value||'';}
  setAttribute(key,value){this.attributes[key]=value;}
  addEventListener(event,listener){this.listeners[event]=listener;}
  querySelector(selector){return this.querySelectorAll(selector)[0]||null;}
@@ -38,8 +44,8 @@ function priceFixture(draft){
  nodes['#issue-catamaran-wrap'].hidden=true;
  const storage=new Map(draft?[['rental-draft-1',JSON.stringify(draft)]]:[]);
  const duration=new Element('button');duration.dataset.duration='30';
- const context={URLSearchParams,location:{search:''},$:s=>nodes[s]||null,data:{fleet:[{id:'sup',label:'SUP',available:5,price:1000},{id:'big',label:'Big SUP',available:1,price:1000}]},user:{id:1},requestId:null,issueInquiry:null,pendingRentalMemory:null,batteryCatamarans:[],rentalPriceManual:false,rentalPricePlan:'hour',window:{},localTime:()=> '2026-09-27T10:00',time:n=>new Date(n).toISOString(),compactDuration:Desk.duration,money,text:elementText,crypto:{randomUUID:()=> 'same-request'},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},FormData:class{constructor(f){this.fields=f.elements;}*[Symbol.iterator](){for(const [name,el] of Object.entries(this.fields))if(!el.disabled)yield [name,el.value];}},document:{querySelectorAll:s=>s==='[data-duration]'?[duration]:[]}};
- runInNewContext(functions(['pendingRental','populateCatamaranOptions','syncCatamaranField','updateRentalPrice','saveRentalDraft','openIssue','issueBooking'])+'\n'+lines.filter(l=>l.startsWith("for(const name of ['equipment'")||l.startsWith("$('#issue-form').elements.amount.addEventListener")||l.startsWith("for(const b of document.querySelectorAll('[data-duration]')")).join('\n'),context);
+ const context={URLSearchParams,location:{search:''},$:s=>nodes[s]||null,data:{fleet:[{id:'sup',label:'SUP',available:5,price:1000},{id:'big',label:'Big SUP',available:1,price:1000},{id:'catamaran',label:'Катамаран',available:2,price:5000}]},user:{id:1},requestId:null,issueInquiry:null,pendingRentalMemory:null,batteryCatamarans:[{label:'Aurora',trip:null},{label:'Borealis',trip:{state:'active'}}],batteryTripsByRental:new Map(),batteryLabelsByRental:new Map(),renderList(){},rentalPriceManual:false,rentalPricePlan:'hour',window:{},localTime:()=> '2026-09-27T10:00',time:n=>new Date(n).toISOString(),compactDuration:Desk.duration,money,text:elementText,crypto:{randomUUID:()=> 'same-request'},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},FormData:class{constructor(f){this.fields=f.elements;}*[Symbol.iterator](){for(const [name,el] of Object.entries(this.fields))if(!el.disabled)yield [name,el.value];}},document:{querySelectorAll:s=>s==='[data-duration]'?[duration]:[]}};
+ runInNewContext(functions(['pendingRental','updateBatteryOverview','populateCatamaranOptions','syncCatamaranField','updateRentalPrice','saveRentalDraft','openIssue','issueBooking'])+'\n'+lines.filter(l=>l.startsWith("for(const name of ['equipment'")||l.startsWith("$('#issue-form').elements.amount.addEventListener")||l.startsWith("for(const b of document.querySelectorAll('[data-duration]')")).join('\n'),context);
  return {context,form,nodes,storage,duration};
 }
 
@@ -90,6 +96,72 @@ test('Hourly booking still calculates its selected quantity and duration automat
  const f=priceFixture();f.context.issueBooking({id:26,details:{equipment:'sup',quantity:2,name:'Иван',phone:'79001112233',plan:'hour',duration:2,date:'2026-09-27'}});
  assert.equal(f.form.elements.amount.value,'4000.00');assert.equal(f.form.elements.expectedReturn.value,'2026-09-27T12:00');assert.equal(f.context.rentalPricePlan,'hour');
  f.form.elements.expectedReturn.value='2026-09-27T11:00';f.form.elements.expectedReturn.listeners.change();assert.equal(f.form.elements.amount.value,'2000.00');
+});
+
+test('Named catamaran selection carries its label while occupied named boats stay disabled',()=>{
+ const f=priceFixture();f.context.openIssue(false);
+ const equipment=f.form.elements.equipment,options=equipment.options.filter(option=>option.value==='catamaran');
+ assert.equal(options.length,3);assert.equal(options[0].dataset.catamaranLabel,undefined);assert.equal(options[1].dataset.catamaranLabel,'Aurora');assert.equal(options[2].dataset.catamaranLabel,'Borealis');
+ assert.equal(options[0].disabled,false);assert.equal(options[1].disabled,false);assert.equal(options[2].disabled,true);
+ options[0].selected=false;options[1].selected=true;equipment.listeners.change();
+ assert.equal(equipment.value,'catamaran');assert.equal(f.form.elements.quantity.value,'1');assert.equal(f.form.elements.catamaranLabel.value,'Aurora');assert.equal(f.nodes['#issue-catamaran-wrap'].hidden,true);
+ const payload=Object.fromEntries(new f.context.FormData(f.form));assert.equal(payload.equipment,'catamaran');assert.equal(payload.catamaranLabel,'Aurora');
+});
+
+test('Submitting a selected named catamaran sends generic equipment id and the chosen boat label',async()=>{
+ const f=priceFixture();f.context.openIssue(false);
+ const named=f.form.elements.equipment.options.find(option=>option.dataset.catamaranLabel==='Aurora');named.selected=true;f.form.elements.equipment.listeners.change();
+ const requests=[];f.context.api=async(...args)=>{requests.push(args);return {id:81};};f.context.finishRental=async()=>{};f.context.pendingRental=()=>null;f.context.rememberRental=()=>{};f.context.lockRentalForm=()=>{};f.context.Event=Event;f.context.window.STARTUx={event(){}};f.nodes['#close-issue']=new Element('button');
+ const start=lines.findIndex(line=>line.startsWith("$('#issue-form').onsubmit=")),end=lines.findIndex((line,index)=>index>start&&line==='};');assert.ok(start>=0&&end>start);
+ runInNewContext(lines.slice(start,end+1).join('\n'),f.context);
+ await f.form.onsubmit({preventDefault(){},target:f.form});
+ assert.equal(requests.length,1);assert.equal(requests[0][0],'rentals');assert.equal(requests[0][1].equipment,'catamaran');assert.equal(requests[0][1].catamaranLabel,'Aurora');assert.equal(requests[0][1].quantity,1);
+});
+
+test('Changing a named catamaran to multiple units selects the generic equipment option',()=>{
+ const f=priceFixture();f.context.openIssue(false);
+ const equipment=f.form.elements.equipment,named=equipment.options.find(option=>option.dataset.catamaranLabel==='Aurora');
+ equipment.options.filter(option=>option.value==='catamaran').forEach(option=>{option.selected=option===named;});equipment.listeners.change();
+ assert.equal(f.form.elements.catamaranLabel.value,'Aurora');
+ f.form.elements.quantity.value='2';f.form.elements.quantity.listeners.change();
+ assert.equal(equipment.value,'catamaran');assert.equal(equipment.selectedOptions[0].dataset.catamaranLabel,undefined);
+ assert.equal(f.form.elements.catamaranLabel.value,'');assert.equal(f.form.elements.catamaranLabel.disabled,true);assert.equal(f.nodes['#issue-catamaran-wrap'].hidden,true);
+ const payload=Object.fromEntries(new f.context.FormData(f.form));assert.equal(payload.equipment,'catamaran');assert.equal(payload.quantity,'2');assert.equal('catamaranLabel' in payload,false);
+});
+
+test('Restoring a named catamaran draft restores the named option and keeps the secondary selector hidden',()=>{
+ const draft={at:Date.now(),requestId:'named-catamaran-draft',inquiryId:null,manualPrice:false,pricePlan:'hour',fields:{equipment:'catamaran',quantity:1,catamaranLabel:'Aurora',people:1,amount:'5000',name:'Иван',phone:'79001112233',departed:'2026-09-27T10:00',expectedReturn:'2026-09-27T11:00',method:'unspecified'}};
+ const f=priceFixture(draft);f.context.openIssue();
+ const selected=f.form.elements.equipment.selectedOptions[0];assert.equal(selected.value,'catamaran');assert.equal(selected.dataset.catamaranLabel,'Aurora');
+ assert.equal(f.form.elements.catamaranLabel.value,'Aurora');assert.equal(f.nodes['#issue-catamaran-wrap'].hidden,true);assert.equal(f.context.requestId,'named-catamaran-draft');
+});
+
+test('Submit rejects a named catamaran that became occupied while the form was open without sending a request',async()=>{
+ const f=priceFixture();f.context.openIssue(false);
+ const equipment=f.form.elements.equipment,named=equipment.options.find(option=>option.dataset.catamaranLabel==='Aurora');
+ named.selected=true;equipment.listeners.change();assert.equal(f.form.elements.catamaranLabel.value,'Aurora');
+ f.context.batteryCatamarans[0].trip={state:'active'};
+ const requests=[];f.context.api=async(...args)=>requests.push(args);f.context.pendingRental=()=>null;f.context.rememberRental=()=>{};f.context.lockRentalForm=()=>{};f.context.Event=Event;
+ f.context.window.STARTUx={event(){}};f.nodes['#close-issue']=new Element('button');
+ const submitStart=lines.findIndex(line=>line.startsWith("$('#issue-form').onsubmit=")),submitEnd=lines.findIndex((line,index)=>index>submitStart&&line==='};');assert.ok(submitStart>=0&&submitEnd>submitStart);
+ runInNewContext(lines.slice(submitStart,submitEnd+1).join('\n'),f.context);
+ await f.form.onsubmit({preventDefault(){},target:f.form});
+ assert.deepEqual(requests,[]);assert.match(f.nodes['#issue-status'].textContent,/уже занят/);assert.equal(f.form.dataset.saving,undefined);
+});
+
+test('Submit rejects a named catamaran when the overview becomes unavailable without sending a request',async()=>{
+ const f=priceFixture();f.context.openIssue(false);
+ const equipment=f.form.elements.equipment,named=equipment.options.find(option=>option.dataset.catamaranLabel==='Aurora');named.selected=true;equipment.listeners.change();
+ assert.equal(f.form.elements.catamaranLabel.value,'Aurora');
+ f.context.updateBatteryOverview(null);
+ assert.equal(f.context.batteryCatamarans.every(boat=>boat.overviewUnavailable===true),true);
+ assert.equal(f.form.elements.catamaranLabel.options.find(option=>option.value==='Aurora').disabled,true);
+ const requests=[];f.context.api=async(...args)=>requests.push(args);f.context.pendingRental=()=>null;f.context.rememberRental=()=>{};f.context.lockRentalForm=()=>{};f.context.Event=Event;
+ f.context.window.STARTUx={event(){}};f.nodes['#close-issue']=new Element('button');
+ const submitStart=lines.findIndex(line=>line.startsWith("$('#issue-form').onsubmit=")),submitEnd=lines.findIndex((line,index)=>index>submitStart&&line==='};');assert.ok(submitStart>=0&&submitEnd>submitStart);
+ runInNewContext(lines.slice(submitStart,submitEnd+1).join('\n'),f.context);
+ await f.form.onsubmit({preventDefault(){},target:f.form});
+ assert.deepEqual(requests,[]);assert.match(f.nodes['#issue-status'].textContent,/нет свежих данных о катамаранах/i);assert.equal(f.form.dataset.saving,undefined);
 });
 
 test('Global search includes an active rental from another tab despite the overdue filter and opens it',async()=>{

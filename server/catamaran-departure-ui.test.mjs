@@ -10,10 +10,12 @@ const css=readFileSync(new URL('../dist/admin/rental-departure.css',import.meta.
 
 test('waiting departures render on work view and use the idempotent departure action',()=>{
  assert.match(app,/id='waiting-departures'/);
- assert.match(app,/api\('rental-depart',\{id:r\.id,revision:r\.revision\}\)/);
+ assert.match(app,/const body=\{id:r\.id,revision:r\.revision\};if\(batteryTrip\)\{body\.batteryTripId=batteryTrip\.id;body\.batteryTripRevision=batteryTrip\.revision;\}await api\('rental-depart',body\)/);
  assert.match(app,/rowBusy\.has\(r\.id\)/);
  assert.match(app,/Отплыли/);
- assert.match(app,/STARTRefunds\?\.mount\(details,'rental',r\.id,user\.id,refresh\)/);
+ assert.match(app,/window\.STARTRefunds\?\.mount\(details,'rental',r\.id,user\.id,refresh\)/);
+ const waiting=app.slice(app.indexOf('function renderWaitingDepartures(){'),app.indexOf('\nfunction renderList(',app.indexOf('function renderWaitingDepartures(){')));
+ assert.doesNotMatch(waiting,/STARTRefunds|\.rental-details/);
 });
 
 test('departure completion redraws the active list after clearing rowBusy',async()=>{
@@ -25,11 +27,39 @@ test('departure completion redraws the active list after clearing rowBusy',async
 
 test('physical rental return action says Вернулись and keeps its surcharge amount and confirmation wording',()=>{
  const lines=app.split(/\r?\n/),start=lines.findIndex(line=>line.startsWith('function returnAmount(')),end=lines.findIndex((line,index)=>index>start&&line.startsWith('function setReturnButton('));
- assert.ok(start>=0&&end>start);const source=lines.slice(start,end+1).join('\n'),button=new FixtureNode('button');button.classList={toggle(){}};button.setAttribute=(key,value)=>{button[key]=value;};
+ assert.ok(start>=0&&end>start);const source=lines.slice(start,end+1).join('\n'),button=new FixtureNode('button');button.setAttribute=(key,value)=>{button[key]=value;button.attributes[key]=String(value);};
  const context={text:(tag,value,className)=>Object.assign(new FixtureNode(tag,value),{className}),button};vm.runInNewContext(source+'\nsetReturnButton(button,{extension_due:1200});',context);
  assert.equal(button.children[0].textContent,'Вернулись');assert.match(button.children[1].textContent,/доплата/);assert.match(button.getAttribute?button.getAttribute('aria-label'):button['aria-label'],/^Вернулись · доплата/);
- assert.match(app,/text\('button','Вернулись','quick-return'\)/);
- assert.match(app,/text\('button','Принять и вернуть','primary'\)/);assert.match(app,/terminal\?'Оплатить и вернуть':'Принять и вернуть'/);
+ assert.match(app,/text\('button','Вернулись','quick-return primary'\)/);
+ assert.match(app,/text\('span','Вернулись'\)/);
+ assert.match(app,/text\('span','доплата '\+returnAmount\(r\),'return-surcharge'\)/);
+ assert.match(app,/async function returnRental\(id,button,cash=false,manualCard=false\)/);
+});
+
+test('setRentalEquipment builds the image and label while preserving the existing initial marker',()=>{
+ const node=new FixtureNode('span');node.dataset.initial='К';
+ const context={text:(tag,value,className)=>Object.assign(new FixtureNode(tag,value),{className})};
+ vm.runInNewContext(functionSource('setRentalEquipment'),context);context.setRentalEquipment(node,{equipment:'catamaran',quantity:2},'Катамаран');
+ assert.equal(node.dataset.initial,'К');assert.equal(node.children[0].tag,'img');assert.equal(node.children[0].className,'rental-equipment-image');
+ assert.match(node.children[0].src,/catamaran-w480\.webp$/);assert.equal(node.children[1].tag,'span');assert.equal(node.children[1].textContent,'Катамаран ×2');
+});
+
+test('return payment dialog exposes the current choices and exact cash confirmation payload',async()=>{
+ const source=app.slice(app.indexOf('function cashReturnConfirmation('),app.indexOf('async function returnRental('));
+ const makeContext=terminal=>{const body=new FixtureNode('body'),context={data:{rentalTerminalEnabled:terminal},money:value=>String(value),text:(tag,value,className)=>Object.assign(new FixtureNode(tag,value),{className}),document:{body,createElement:tag=>new FixtureNode(tag)}};vm.runInNewContext(source,context);return context;};
+ const rental={id:9,name:'Guest',extension_due:1250};
+ const terminal=makeContext(true),terminalDialogPromise=terminal.confirmReturnPayment(rental),terminalDialog=terminal.document.body.children[0],terminalActions=terminalDialog.children[2];
+ assert.deepEqual(terminalActions.children.map(button=>button.textContent),['Карта на CS50','Получено наличными','Эквайринг вручную']);
+ assert.equal(terminal.cashReturnConfirmation(rental).cash,true);
+ terminalActions.children[1].onclick();
+ assert.deepEqual(JSON.parse(JSON.stringify(await terminalDialogPromise)),{cash:true});
+ const manual=makeContext(true),manualPromise=manual.confirmReturnPayment(rental);manual.document.body.children[0].children[2].children[2].onclick();
+ assert.deepEqual(JSON.parse(JSON.stringify(await manualPromise)),{manualCard:true});
+ const noTerminal=makeContext(false),cash=noTerminal.cashReturnConfirmation(rental);
+ assert.deepEqual(JSON.parse(JSON.stringify(cash)),{payment:{confirmed:true,method:'cash',amountCents:1250}});
+ const noTerminalDialogPromise=noTerminal.confirmReturnPayment(rental),noTerminalDialog=noTerminal.document.body.children[0];
+ assert.deepEqual(noTerminalDialog.children[2].children.map(button=>button.textContent),['Получено картой','Получено наличными']);
+ noTerminalDialog.children[3].onclick();assert.equal(await noTerminalDialogPromise,null);
 });
 
 function functionSource(name){
@@ -40,28 +70,42 @@ function calendarFunctionSource(name){
  const lines=calendar.split(/\r?\n/),line=lines.find(value=>value.trimStart().startsWith('function '+name+'('));assert.ok(line,`missing calendar ${name}`);return line.trim();
 }
 class FixtureNode{
- constructor(tag='div',value=''){this.tag=tag;this.textContent=value;this.children=[];this.dataset={};this.hidden=false;this.disabled=false;this.className='';this.parentElement=null;}
- append(...nodes){for(const node of nodes){node.parentElement=this;this.children.push(node);}}
- replaceChildren(...nodes){this.children=[...nodes];}
- querySelector(){return null;}
- contains(){return false;}
+ constructor(tag='div',value=''){this.tag=tag;this._text=String(value);this.children=[];this.dataset={};this.hidden=false;this.disabled=false;this.className='';this.parentElement=null;this.listeners={};this.attributes={};this.classList={add:name=>{if(!this.classList.contains(name))this.className=[this.className,name].filter(Boolean).join(' ');},remove:name=>{this.className=this.className.split(/\s+/).filter(value=>value!==name).join(' ');},contains:name=>this.className.split(/\s+/).includes(name),toggle:(name,force)=>{const on=force??!this.classList.contains(name);this.classList[on?'add':'remove'](name);return on;}};}
+ get textContent(){return this._text+this.children.map(node=>node.textContent).join('');}
+ set textContent(value){this.replaceChildren();this._text=String(value??'');}
+ append(...nodes){for(const node of nodes){node.remove();node.parentElement=this;this.children.push(node);}}
+ replaceChildren(...nodes){for(const child of this.children)child.parentElement=null;this.children=[];this._text='';this.append(...nodes);}
+ insertBefore(node,before){node.remove();node.parentElement=this;const index=this.children.indexOf(before);this.children.splice(index<0?this.children.length:index,0,node);}
+ querySelector(selector){return this.querySelectorAll(selector)[0]||null;}
+ querySelectorAll(selector){return this.children.flatMap(node=>[...(node.matches(selector)?[node]:[]),...node.querySelectorAll(selector)]);}
+ matches(selector){return selector.split(',').some(part=>{const value=part.trim();return value.startsWith('.')?this.classList.contains(value.slice(1)):value.toLowerCase()===this.tag.toLowerCase();});}
+ addEventListener(type,listener){(this.listeners[type]||=new Set()).add(listener);}
+ dispatchEvent(event){event.target=this;for(const listener of this.listeners[event.type]||[])listener.call(this,event);return true;}
+ setAttribute(name,value){this.attributes[name]=String(value);}
+ getAttribute(name){return this.attributes[name]??null;}
+ contains(node){return this===node||this.children.some(child=>child.contains(node));}
+ close(){this.onclose?.();}
+ remove(){this.removed=true;}
+ showModal(){this.open=true;}
 }
 function paymentFixture(rows,payments=[]){
  const panel=new FixtureNode(),context={data:{pendingRentals:rows.filter(r=>r.initial_due>0),waitingDepartures:rows.filter(r=>r.departure_pending&&!r.initial_due),active:[],dayRentals:[],rentalPayments:payments},
   document:{createElement:tag=>new FixtureNode(tag)},$:selector=>selector==='#rental-payments'?panel:new FixtureNode(),text:(tag,value,className)=>Object.assign(new FixtureNode(tag,value),{className}),money:value=>String(value),paymentDiagnostic:()=>null,
-  canStartRentalPayment:(r,p)=>!!r&&(!p||p.state==='cancelled')&&(Number(r.initial_due)>0||Number(r.extension_due)>0),startRentalPayment(){},refresh(){},openRentalReconciliation(){},window:{}};
+  canStartRentalPayment:(r,p)=>!!r&&(!p||p.state==='cancelled')&&(Number(r.initial_due)>0||Number(r.extension_due)>0),rentalPaymentPhase:(r,p)=>p?.phase||(Number(r.initial_due)>0?'issue':'extension'),startRentalPayment(){},refresh(){},openRentalReconciliation(){},window:{}};
  vm.runInNewContext(functionSource('renderRentalPayments'),context);context.renderRentalPayments();return {panel,context};
 }
 
-test('unpaid rental retains payment actions while paid pending rental has no cash, retry, or cancel controls',()=>{
+test('unpaid and canceled rentals use the current CS50 labels while paid pending rental has no payment controls',()=>{
  const unpaid={id:11,name:'Unpaid',equipment:'sup',initial_due:2400,departure_pending:1,revision:1};
  const paid={id:12,name:'Paid',equipment:'kayak',initial_due:0,paid:2400,departure_pending:1,revision:1};
- const {panel}=paymentFixture([unpaid,paid],[{rentalId:12,state:'paid',phase:'issue',paid:true,label:'Оплата получена'}]);
- const controls=panel.children.slice(1).map(row=>row.children.filter(node=>node.tag==='button').map(node=>node.textContent));
- assert.ok(controls[0].includes('Оплатить'));
- assert.ok(controls[0].includes('Получено наличными'));
- assert.ok(controls[0].includes('Отменить выдачу'));
- assert.ok(!controls[1].some(label=>['Оплатить','Повторить на кассе','Получено наличными','Отменить выдачу'].includes(label)));
+ const canceled={id:13,name:'Retry',equipment:'sup',initial_due:2400,departure_pending:1,revision:1};
+ const {panel}=paymentFixture([unpaid,paid,canceled],[{rentalId:12,state:'paid',phase:'issue',paid:true,label:'Оплата получена'},{rentalId:13,state:'cancelled',phase:'issue'}]);
+ const controls=new Map(panel.children.slice(1).map(row=>[row.dataset.paymentRental,row.children.filter(node=>node.tag==='button').map(node=>node.textContent)]));
+ assert.ok(controls.get('11').includes('Карта на CS50'));
+ assert.ok(controls.get('11').some(label=>label.startsWith('Наличные · ')));
+ assert.ok(controls.get('11').includes('Отменить выдачу'));
+ assert.ok(!controls.get('12').some(label=>['Карта на CS50','Повторить на CS50','Отменить выдачу'].includes(label)));
+ assert.ok(controls.get('13').includes('Повторить на CS50'));
 });
 
 test('search excludes pending departures from active rentals and history distinguishes unpaid, waiting, and canceled',()=>{
@@ -88,18 +132,20 @@ test('search exposes unpaid pending rental and focuses payment row without start
  context.activeQuery='Услуга';context.renderSearch();assert.ok(results.children.some(node=>node.textContent.includes('Услуга ожидания')));
 });
 
-test('deferred guest bill shows its bill link and term label without claiming payment',()=>{
+test('deferred guest bill shows its bill link and term label without claiming payment or mounting refunds',()=>{
  const active=new FixtureNode(),summary=new FixtureNode('div');let panelRef;active.append(summary);
  const rental={id:24,name:'Guest',equipment:'sup',quantity:1,paid:0,initial_due:0,departure_pending:1,expected_return:Date.parse('2026-10-08T13:00:00+03:00'),departed:'2026-10-08T12:00',guestBillId:88,revision:1},freePrice={id:25,name:'Service',equipment:'service',quantity:1,paid:0,initial_due:0,departure_pending:1,custom_json:'{"title":"Free price"}',revision:1};let opened=0;
- const context={data:{waitingDepartures:[rental,freePrice],fleet:[{id:'sup',label:'SUP'},{id:'service',label:'Услуга'}]},user:{id:3},rowBusy:new Set(),document:{activeElement:new FixtureNode('body')},window:{STARTRefunds:{mount(){}} ,STARTGuests:{show:id=>{opened=id;}}},money:()=> '0 ₽',
+ let refundsMounted=0;const context={data:{waitingDepartures:[rental,freePrice],fleet:[{id:'sup',label:'SUP'},{id:'service',label:'Услуга'}]},user:{id:3},rowBusy:new Set(),activeQuery:'',rentalStage:'all',batteryTripsByRental:new Map(),waitingRows:()=>[rental],rentalEquipmentLabel:(r,label)=>label,setRentalEquipment:(node,r,label)=>{node.replaceChildren(new FixtureNode('span',label+(r.quantity>1?' ×'+r.quantity:'')));},rentalCatamaran:()=>null,catamaranLabels:()=>[],Desk:{matches:()=>true},document:{activeElement:new FixtureNode('body')},window:{STARTRefunds:{mount(){refundsMounted++;}},STARTGuests:{show:id=>{opened=id;}}},money:()=> '0 ₽',
   text:(tag,value,className)=>Object.assign(new FixtureNode(tag,value),{className}),refresh(){},
   $:selector=>selector==='#active-panel'?active:selector==='#waiting-departures'?panelRef||null:selector==='#active-summary'?summary:null};
  active.insertBefore=(node,before)=>{panelRef=node;node.parentElement=active;active.children.splice(active.children.indexOf(before),0,node);};
  vm.runInNewContext(functionSource('renderWaitingDepartures'),context);context.renderWaitingDepartures();const rendered=panelRef,row=rendered.children[1];
- assert.equal(row.children.find(node=>node.tag==='small').textContent,'Срок · 60 мин.');assert.equal(rendered.children[0].textContent,'Ожидают отплытия · 1');
- assert.ok(!row.children.find(node=>node.tag==='small').textContent.includes('Оплачено'));
- const bill=row.children.find(node=>node.tag==='button'&&node.textContent.includes('В счёте гостя'));assert.ok(bill);bill.onclick();assert.equal(opened,88);
- const preserved=[...rendered.children];rendered.querySelector=selector=>selector==='.refund-panel[open]'?{open:true}:null;context.renderWaitingDepartures();assert.deepEqual(rendered.children,preserved);
+ assert.equal(row.children[3].className,'departure-status');assert.equal(row.children[3].children[0].className,'rental-status');assert.equal(row.children[3].children[0].textContent,'Ожидает отплытия');assert.equal(row.children[3].children[1].className,'departure-duration');assert.equal(row.children[3].children[1].textContent,'1 ч 0 мин');assert.equal(rendered.children[0].textContent,'Ожидают отплытия · 1');
+ assert.ok(!row.children.some(node=>node.textContent.includes('Оплачено')));
+ const bill=row.children.find(node=>node.className==='departure-bill');assert.ok(bill);assert.equal(bill.textContent,'В счёт гостя');bill.onclick();assert.equal(opened,88);
+ assert.equal(refundsMounted,0);assert.ok(!row.children.some(node=>node.className==='rental-details'));
+ const history=app.slice(app.indexOf('function renderDayRentals(){'),app.indexOf("$('#rental-history-day').onchange",app.indexOf('function renderDayRentals(){')));
+ assert.match(history,/window\.STARTRefunds\?\.mount\(details,'rental',r\.id,user\.id,refresh\)/);
 });
 
 test('search and history distinguish waiting and canceled departures without a fake departure time',()=>{
@@ -109,7 +155,9 @@ test('search and history distinguish waiting and canceled departures without a f
  assert.match(app,/!waiting&&Number\(r\.departure_pending\)!==1/);
  assert.match(app,/depart\.onclick=\(\)=>startRentalDeparture\(r,depart\)/);
  assert.match(app,/Ожидает оплаты · '\+shortTime\(r\.created\)/);
- assert.match(app,/\.refund-panel\[open\]/);
+ assert.match(app,/window\.STARTRefunds\?\.mount\(details,'rental',r\.id,user\.id,refresh\)/);
+ const history=app.slice(app.indexOf('function renderDayRentals(){'),app.indexOf("$('#rental-history-day').onchange",app.indexOf('function renderDayRentals(){')));
+ assert.match(history,/window\.STARTRefunds\?\.mount\(details,'rental',r\.id,user\.id,refresh\)/);
 });
 
 test('calendar handles pending rentals across equipment types, later days, payment, and cancellation',()=>{
@@ -130,7 +178,9 @@ test('calendar handles pending rentals across equipment types, later days, payme
 });
 
 test('loaded frontend assets use the requested cache version and compact rows fit',()=>{
- assert.match(html,/app\.js\?v=rental-departure-20261008-1/);
+ assert.match(html,/app\.js\?v=rental-controls-20261010-3/);
+ assert.match(html,/rental-mockup\.css\?v=rental-controls-20261010-6/);
+ assert.match(html,/rental-batteries\.js\?v=battery-controls-20261010-3/);
  assert.match(html,/calendar\.js\?v=rental-departure-20261008-1/);
  assert.match(html,/rental-departure\.css\?v=rental-departure-20261008-1/);
  assert.match(css,/grid-template-columns:minmax\(0,1fr\)/);
