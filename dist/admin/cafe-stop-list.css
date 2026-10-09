@@ -1,0 +1,30 @@
+.cafe-stop-list-nav{display:flex;flex:0 0 128px;inline-size:128px;min-inline-size:128px;min-block-size:38px;align-items:center;justify-content:center;padding:7px 9px;border:1px solid #b33b42;border-radius:4px;background:#fff4f3;color:#8d2028;font-family:Arial,system-ui,sans-serif;font-size:13px;font-weight:600;line-height:1.2;white-space:normal;cursor:pointer}
+.cafe-stop-list-nav::after{content:attr(data-count);display:inline-grid;place-items:center;min-inline-size:18px;height:18px;margin-inline-start:6px;padding-inline:4px;border-radius:9px;background:#8d2028;color:#fff;font:700 11px/1 system-ui,sans-serif}
+.cafe-stop-list-nav[data-count="0"]::after{display:none}
+@media(max-width:700px){.cafe-stop-list-nav{flex:initial;inline-size:auto;min-inline-size:0;min-block-size:44px;box-sizing:border-box}}
+.cafe-stop-list-dialog{width:min(1180px,calc(100vw - 24px));max-width:none;max-height:calc(100dvh - 24px);margin:auto;padding:0;border:1px solid #cbd1d5;border-radius:6px;background:#fff;color:#202629;box-shadow:0 12px 38px #15202740}
+.cafe-stop-list-dialog::backdrop{background:#17212680}
+.csl-header{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid #d9dfe2;background:#fff}
+.csl-header h2{flex:1;margin:0;font-size:19px;line-height:1.25}
+.csl-header button,.csl-actions button,.csl-unit-form button{min-height:36px;padding:7px 11px;border:1px solid #aeb8bd;border-radius:4px;background:#fff;color:#202629;font-family:Arial,system-ui,sans-serif;font-size:13px;font-weight:600;line-height:1.25;cursor:pointer}
+.csl-header .csl-close{border-color:#b33b42;color:#8d2028}
+.csl-message{min-height:0;margin:0;padding:0 16px;color:#39464c;font-size:13px}
+.csl-message:not(:empty){padding-block:9px}
+.csl-message[data-error="true"]{color:#a3262e}
+.csl-content{max-height:calc(100dvh - 102px);overflow:auto;padding:0 12px 14px}
+.csl-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:13px}
+.csl-table th,.csl-table td{padding:9px 8px;border-bottom:1px solid #e1e5e7;text-align:left;vertical-align:top;overflow-wrap:anywhere}
+.csl-table thead th{position:sticky;top:0;background:#f2f5f6;color:#3a464b;font-size:12px}
+.csl-table thead th:nth-child(1){width:19%}.csl-table thead th:nth-child(2){width:9%}.csl-table thead th:nth-child(3){width:9%}.csl-table thead th:nth-child(4){width:39%}.csl-table thead th:nth-child(5){width:24%}
+.csl-product{font-weight:700}
+.csl-reasons p{margin:0 0 5px}.csl-reasons small{display:inline-block;margin-top:3px;color:#53636a}
+.csl-actions{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px}
+.csl-actions .csl-primary,.csl-unit-form .csl-primary{border-color:#20724b;background:#20724b;color:#fff}
+.csl-actions .csl-secondary{border-color:#4d727c;color:#234c56}
+.csl-actions .csl-link{display:inline-flex;min-height:36px;align-items:center;padding:7px 5px;color:#175b77;text-decoration:underline}
+.csl-unit-form{display:grid;gap:7px;min-width:145px}
+.csl-unit-form label{display:grid;gap:4px;font-size:12px}
+.csl-unit-form input{width:100%;min-height:36px;padding:6px 8px;border:1px solid #89979d;border-radius:3px;font:inherit}
+.csl-unit-form .csl-unit-confirm{display:flex;align-items:flex-start;gap:7px;line-height:1.3}
+.csl-unit-confirm input[type=checkbox]{flex:0 0 18px;width:18px;min-height:18px;height:18px;margin:1px 0 0;padding:0}
+@media(max-width:700px){.cafe-stop-list-dialog{width:calc(100vw - 12px);max-height:calc(100dvh - 12px)}.csl-content{max-height:calc(100dvh - 94px);padding-inline:8px}.csl-table{table-layout:auto}.csl-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.csl-table,.csl-table tbody,.csl-table tr,.csl-table th,.csl-table td{display:block}.csl-table tbody tr{padding:8px 0;border-bottom:2px solid #cdd5d9}.csl-table tbody th,.csl-table tbody td{padding:4px 7px;border:0}.csl-table tbody th{font-size:15px}.csl-table tbody td:nth-child(2)::before{content:'Цена: ';font-weight:700}.csl-table tbody td:nth-child(3)::before{content:'Доступно: ';font-weight:700}.csl-table tbody td:nth-child(4)::before{content:'Причина: ';font-weight:700}.csl-table tbody td:nth-child(5)::before{content:'Действие: ';font-weight:700}.csl-actions{padding-top:6px!important}}

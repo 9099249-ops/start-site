@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ru">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width,initial-scale=1">
+ <meta name="robots" content="noindex,nofollow">
+ <title>СТАРТ · Состояние аккумуляторов</title>
+ <link rel="stylesheet" href="/admin/cafe.css">
+ <link rel="stylesheet" href="/admin/ops-nav.css?v=operations-analytics-20261007-3">
+ <link rel="stylesheet" href="/admin/pos.css">
+ <link rel="stylesheet" href="/admin/visual-v2.css">
+ <link rel="stylesheet" href="/admin/battery-state.css?v=battery-state-20261009-2">
+ <script defer src="/admin/ops-nav.js?v=rental-controls-20261010-3"></script>
+ <script defer src="/admin/battery-state.js?v=battery-state-20261009-3"></script>
+</head>
+<body class="theme-rental">
+ <main class="battery-page">
+  <header class="battery-heading">
+   <div><h1>Состояние аккумуляторов</h1><p>Показания каждого физического аккумулятора и связь его ESP32.</p></div>
+   <button id="battery-add" class="primary" type="button" hidden>Добавить аккумулятор</button>
+  </header>
+  <p id="battery-status" class="battery-status" role="status" aria-live="polite">Загружаем состояние…</p>
+  <a id="battery-login" href="/admin/" hidden>Войти в админку</a>
+  <p class="battery-park-note">Три катамарана, пять аккумуляторов. Каждый аккумулятор можно переименовать и перенести в другую группу, сохранив его историю.</p>
+  <section id="battery-empty" class="battery-empty" hidden>
+   <h2>Пока нет аккумуляторов</h2>
+   <p>Добавьте отдельный профиль для каждого физического аккумулятора и ESP32. Новый аккумулятор заводится отдельным профилем; прежний можно выключить, чтобы сохранить историю.</p>
+  </section>
+  <section id="battery-list" class="battery-list" aria-label="Аккумуляторы"></section>
+  <form id="battery-device-form" class="battery-editor" hidden>
+   <div class="battery-editor-heading"><h2 id="battery-form-title">Добавить аккумулятор</h2><button id="battery-form-close" type="button" aria-label="Закрыть форму">×</button></div>
+   <p id="battery-form-note" class="muted">Укажите понятное название и идентификаторы ESP32 и BMS.</p>
+   <div class="battery-fields">
+    <label>Название аккумулятора<input name="name" maxlength="120" required autocomplete="off" placeholder="Например, Аккумулятор 1"></label>
+    <div class="battery-field"><label for="battery-catamaran">Катамаран</label><select id="battery-catamaran" name="catamaranLabel"><option value="">Не установлен</option><option value="Сашин">Сашин</option><option value="Наташин">Наташин</option><option value="С серой крышей">С серой крышей</option></select></div>
+    <label>MAC-адрес BMS<input name="bmsId" type="text" maxlength="17" pattern="(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}" required autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="AA:BB:CC:DD:EE:FF"></label>
+    <label>Серийный номер аккумулятора<input name="serialNumber" maxlength="80" autocomplete="off" placeholder="Например, 25-0277Q1N6622"></label>
+    <label>Ёмкость, А·ч<input name="capacityAh" type="number" min="0.1" max="10000" step="0.1" inputmode="decimal"></label>
+    <label>Порог устаревания, секунд<input name="staleAfterSeconds" type="number" min="30" max="3600" step="1" required inputmode="numeric" value="90"></label>
+   </div>
+   <label id="battery-enabled-row" class="battery-enabled" hidden><input name="enabled" type="checkbox" checked> Устройство активно</label>
+   <p id="battery-form-error" class="battery-error" role="alert"></p>
+   <div class="battery-actions"><button id="battery-form-save" class="primary" type="submit">Сохранить</button><button id="battery-form-cancel" type="button">Отмена</button></div>
+  </form>
+ </main>
+ <dialog id="battery-token-dialog" class="battery-token-dialog">
+  <form method="dialog">
+   <h2>Ключ устройства</h2>
+   <p>Скопируйте ключ сейчас и передайте его при настройке ESP32. После закрытия он больше не будет показан.</p>
+   <label for="battery-token">Ключ доступа</label>
+   <textarea id="battery-token" readonly rows="3" spellcheck="false" aria-label="Одноразовый ключ устройства"></textarea>
+   <p id="battery-token-status" class="muted" role="status" aria-live="polite"></p>
+   <div class="battery-actions"><button id="battery-token-copy" class="primary" type="button">Скопировать ключ</button><button id="battery-token-close" type="submit">Закрыть</button></div>
+  </form>
+ </dialog>
+</body>
+</html>

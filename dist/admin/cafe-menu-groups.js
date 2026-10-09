@@ -24,7 +24,9 @@
     for(const sub of entry.grid.querySelectorAll('.menu-subcategory'))sub.hidden=!!query&&!sub.querySelectorAll('.menu-item[data-item-id]').length;
     if(!cards.length&&!query){const empty=document.createElement('p');empty.className='menu-group-empty';empty.textContent='Нет доступных товаров';entry.grid.append(empty);}const a=document.createElement('a');a.textContent=title;a.href='#'+entry.section.id;if(!entry.section.hidden)links.push(a);}
    if(map.has('other')){const entry=map.get('other'),cards=[...entry.grid.querySelectorAll('.menu-item[data-item-id]')];entry.section.hidden=!!query&&!cards.length;const a=document.createElement('a');a.textContent='Другое';a.href='#'+entry.section.id;if(!entry.section.hidden)links.push(a);}
-   const ordered=groups.map(([key])=>map.get(key).section);if(map.has('other'))ordered.push(map.get('other').section);originals.forEach(s=>s.remove());list.replaceChildren(...ordered);nav.replaceChildren(...links);
+   const ordered=groups.map(([key])=>map.get(key).section);if(map.has('other'))ordered.push(map.get('other').section);originals.forEach(s=>s.remove());list.replaceChildren(...ordered);
+   if(window.STARTCafeStopList&&document.body.classList.contains('cafe-integrated')){const stop=document.createElement('button');stop.type='button';stop.className='cafe-stop-list-nav';stop.textContent='Блюда в стопе';stop.setAttribute('aria-label','Блюда в стопе');stop.onclick=()=>window.STARTCafeStopList.open();window.STARTCafeStopList.attachButton?.(stop);const hookah=links.findIndex(a=>a.href==='#staff-menu-hookah');links.splice(hookah<0?links.length:hookah+1,0,stop);}
+   nav.replaceChildren(...links);
   }
   group();const observer=new MutationObserver(group);observer.observe(list,{childList:true,subtree:true});const api={disconnect(){observer.disconnect();mounted.delete(host);}};mounted.set(host,api);return api;
  }};

@@ -33,8 +33,25 @@ export function validateCatalog(input,previous){
  const bool=(o,k)=>{if(typeof o[k]!=='boolean')fail('Проверьте переключатели меню.');};
  const catIds=ids(d.categories),groupIds=ids(d.groups);ids(d.items);
  for(const x of d.items){
+  const previousItem=previous?.items.find(p=>p.id===x.id);
+  if(x.legacyVariantOptions===undefined&&previousItem?.legacyVariantOptions)x.legacyVariantOptions=copy(previousItem.legacyVariantOptions);
+  if(x.legacyVariantOptions!==undefined){
+   if(!x.legacyVariantOptions||typeof x.legacyVariantOptions!=='object'||Array.isArray(x.legacyVariantOptions))fail('Проверьте прежние варианты ингредиентов.');
+   for(const [variantId,optionId] of Object.entries(x.legacyVariantOptions))if(!x.variants?.some(v=>v.id===variantId)||typeof optionId!=='string'||!d.groups.some(g=>x.groupIds?.includes(g.id)&&g.options.some(o=>o.id===optionId)))fail('Проверьте связь прежнего варианта с добавкой.');
+  }
+  if(x.costMode===undefined&&previousItem?.costMode!==undefined)x.costMode=previousItem.costMode;
+  if(x.costMode!==undefined&&!['manual','recipe'].includes(x.costMode))fail('Проверьте способ расчёта себестоимости.');
+  if(x.missingRecipeNorms===undefined&&previousItem?.missingRecipeNorms!==undefined)x.missingRecipeNorms=previousItem.missingRecipeNorms;
+  if(x.missingRecipeNorms!==undefined){if(!Array.isArray(x.missingRecipeNorms)||x.missingRecipeNorms.length>30)fail('Проверьте незаполненные нормы.');x.missingRecipeNorms=x.missingRecipeNorms.map(v=>str(v,100));}
   if(x.blockQuickSale===undefined)x.blockQuickSale=previous?.items.find(p=>p.id===x.id)?.blockQuickSale===true;
   bool(x,'blockQuickSale');
+  for(const variant of x.variants||[]){
+   const previousVariant=previous?.items.find(item=>item.id===x.id)?.variants.find(v=>v.id===variant.id);
+   if(variant.useBaseRecipe===undefined&&typeof previousVariant?.useBaseRecipe==='boolean')variant.useBaseRecipe=previousVariant.useBaseRecipe;
+   if(variant.useBaseRecipe!==undefined)bool(variant,'useBaseRecipe');
+   if(variant.missingRecipeNorms===undefined&&previousVariant?.missingRecipeNorms!==undefined)variant.missingRecipeNorms=previousVariant.missingRecipeNorms;
+   if(variant.missingRecipeNorms!==undefined){if(!Array.isArray(variant.missingRecipeNorms)||variant.missingRecipeNorms.length>30)fail('Проверьте незаполненные нормы вида.');variant.missingRecipeNorms=variant.missingRecipeNorms.map(v=>str(v,100));}
+  }
  }
  for(const c of d.categories){c.name=str(c.name,80);integer(c.sort,0,10000);bool(c,'active');}
  const allOptionIds=new Set();
@@ -75,7 +92,7 @@ export class CafeStore{
  transaction(fn){this.db.exec('BEGIN IMMEDIATE');try{const result=fn();this.db.exec('COMMIT');return result;}catch(e){this.db.exec('ROLLBACK');throw e;}}
  audit(user,action,body){this.db.prepare('INSERT INTO cafe_audit(actor,action,body,created) VALUES(?,?,?,?)').run(user.id,action,JSON.stringify(body),Date.now());}
  catalog(){const r=this.db.prepare('SELECT * FROM cafe_catalog WHERE id=1').get(),d=JSON.parse(r.body);return {...d,settings:{...d.settings,boardText:boardText.resolve(d.settings.boardText)},revision:r.revision};}
- saveCatalog(b,u){requireAdmin(u);return this.transaction(()=>{const old=this.catalog();if(b.revision!==old.revision)fail('Меню уже изменено. Обновите редактор.',409);const d=validateCatalog(b,old);this.db.prepare('UPDATE cafe_catalog SET body=?,revision=revision+1 WHERE id=1').run(JSON.stringify(d));this.audit(u,'catalog',{revision:old.revision+1});return this.catalog();});}
+ saveCatalog(b,u,transaction=fn=>this.transaction(fn),syncCosts=true){requireStaff(u);return transaction(()=>{const old=this.catalog();if(b.revision!==old.revision)fail('Меню уже изменено. Обновите редактор.',409);if(u.role!=='admin'&&stable(b.settings)!==stable(old.settings))fail('Общие настройки кафе доступны только администратору.',403);const d=validateCatalog(b,old);this.db.prepare('UPDATE cafe_catalog SET body=?,revision=revision+1 WHERE id=1').run(JSON.stringify(d));this.audit(u,'catalog',{revision:old.revision+1});if(syncCosts)this.recipeCosts?.syncRecipeCosts(u);return this.catalog();});}
   publicAvailability(now=Date.now()){
    const s=this.catalog().settings,clock=new Date(now+10800000).toISOString().slice(11,16),active=this.db.prepare("SELECT w.id FROM employee_work_sessions w JOIN admin_users u ON u.id=w.user_id WHERE u.login<>'admin' AND w.started_at<=? AND (w.ended_at IS NULL OR w.ended_at>?) LIMIT 1").get(now,now);
    const reason=!s.enabled?'paused':clock<s.open||clock>=s.close?'outside_hours':!active?'not_open':null;
@@ -119,11 +136,15 @@ export class CafeStore{
  calculate(lines,fulfillment,u=null){
   if(!Array.isArray(lines)||!lines.length||lines.length>40)fail('В корзине должно быть от 1 до 40 позиций.');const c=this.catalog();
   const items=lines.map(l=>{if(l.custom===true){requireStaff(u);const name=str(l.name,120),quantity=integer(l.quantity,1,20),unitCents=integer(l.unitCents,1,10000000);if(!/^manual-[a-f0-9-]{36}$/.test(l.itemId||''))fail('Обновите свободную позицию.');return {custom:true,itemId:l.itemId,name,quantity,unitCents,totalCents:unitCents*quantity,basePriceCents:unitCents,variant:null,modifiers:[],comment:str(l.comment||'',200,false),station:'none'};}const x=c.items.find(x=>x.id===l.itemId);if(!x||!x.active||x.soldOut||!c.categories.some(k=>k.id===x.categoryId&&k.active))fail('Позиция недоступна. Обновите корзину.',409);if(x.restricted||x.station==='hookah')fail('Эта позиция доступна только для просмотра.',400);if(fulfillment==='yacht'&&!x.yacht)fail(`«${x.name}» недоступно для доставки на яхту.`,409);const quantity=integer(l.quantity,1,20);let price=x.priceCents,variant=null;
-   if(x.variants.length){variant=x.variants.find(v=>v.id===l.variantId&&v.active);if(!variant)fail('Выберите доступный вариант для «'+x.name+'».');price+=variant.priceCents;}else if(l.variantId)fail('Вариант не найден.');
-   const selected=l.optionIds||[];if(!Array.isArray(selected)||selected.length>60||new Set(selected).size!==selected.length)fail('Проверьте добавки.');const modifiers=[];
+   const legacyOption=l.variantId&&Object.hasOwn(x.legacyVariantOptions||{},l.variantId)?x.legacyVariantOptions[l.variantId]:null;
+   if(x.variants.some(v=>v.active)){variant=x.variants.find(v=>v.id===l.variantId&&v.active);if(!variant)fail('Выберите доступный вариант для «'+x.name+'».');price+=variant.priceCents;}else if(l.variantId&&!legacyOption)fail('Вариант не найден.');
+   let selected=l.optionIds||[];if(!Array.isArray(selected))fail('Проверьте добавки.');
+   // Old saved carts retain their request body; resolve the former tea choice here.
+   if(legacyOption)selected=[legacyOption,...selected];
+   if(selected.length>60||new Set(selected).size!==selected.length)fail('Проверьте добавки.');const modifiers=[];
    for(const id of selected){let found=false;for(const g of c.groups.filter(g=>g.active&&x.groupIds.includes(g.id))){const o=g.options.find(o=>o.id===id&&o.active&&!o.soldOut);if(o){modifiers.push({groupId:g.id,groupName:g.name,optionId:o.id,name:o.name,priceCents:o.priceCents});price+=o.priceCents;found=true;break;}}if(!found)fail('Добавка недоступна. Обновите корзину.',409);}
    for(const g of c.groups.filter(g=>g.active&&x.groupIds.includes(g.id))){const count=modifiers.filter(m=>m.groupId===g.id).length;if(count<g.min||count>g.max)fail(`«${g.name}»: выберите от ${g.min} до ${g.max}.`);}
-   return {itemId:x.id,name:x.name,basePriceCents:x.priceCents,variant:variant?copy(variant):null,modifiers,quantity,unitCents:price,totalCents:price*quantity,comment:str(l.comment||'',200,false),station:x.station,...(x.blockQuickSale===true?{blockQuickSale:true}:{})};
+   return {itemId:x.id,name:x.name,basePriceCents:x.priceCents,variant:variant?copy(variant):null,modifiers,quantity,unitCents:price,totalCents:price*quantity,comment:str(l.comment||'',200,false),station:x.station,...(x.blockQuickSale===true?{blockQuickSale:true}:{}),...(x.costMode==='recipe'?{costMode:'recipe'}:{})};
   });const totalCents=items.reduce((n,i)=>n+i.totalCents,0);integer(totalCents,0,100000000);return {items,totalCents};
  }
  priced(lines,details,existing=null,u=null){const q=this.calculate(lines,details.fulfillment,u);if(details.complimentary)return {...q,menuValueCents:q.totalCents,totalCents:0,...(details.fulfillment==='house'?{deliveryCents:0,subtotalCents:q.totalCents}:{})};if(details.fulfillment!=='house')return q;const subtotal=q.totalCents+(existing?.details.items.reduce((n,i)=>n+i.totalCents,0)||0),deliveryCents=subtotal>=100000?0:30000;return {...q,subtotalCents:subtotal,deliveryCents,totalCents:q.totalCents+deliveryCents-(existing?.details.deliveryCents||0)};}

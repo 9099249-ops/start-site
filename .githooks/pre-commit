@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+branch=$(git symbolic-ref --quiet --short HEAD || true)
+if [ "$branch" = main ] || [ -z "$branch" ]; then
+  echo 'START: create a task branch before committing; main and detached HEAD are blocked.' >&2
+  exit 1
+fi
+git diff --cached --name-only --diff-filter=ACMR | while IFS= read -r name; do
+  case "$name" in
+    firmware/esp32-bms-gateway/releases/public-key.pem)
+      first_line=$(git show ":$name" | sed -n '1p')
+      if [ "$first_line" != '-----BEGIN PUBLIC KEY-----' ] ||
+        git show ":$name" | grep -Eq '^-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----$'; then
+        echo "START: firmware release key must contain a public PEM only: $name" >&2
+        exit 1
+      fi
+      ;;
+    .env.example) ;;
+    .env|.env.*|*/.env|*/.env.*|*.sqlite|*.sqlite-*|*.db|*.db-*|*.key|*.pem|*.pfx|*.p12|*.tar.gz|*.tgz|*.zip|backups/*|site-backups/*|start-print-agent/config.json)
+      echo "START: private/runtime file is staged: $name" >&2
+      exit 1
+      ;;
+  esac
+done

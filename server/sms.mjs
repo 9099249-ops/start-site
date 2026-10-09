@@ -3,6 +3,7 @@ import {createHash} from 'node:crypto';
 import {fleet} from './admin.mjs';
 import {defaults} from './content.mjs';
 import {bookingText} from './telegram.mjs';
+import {StaffShiftReminders,dailySmsUsed} from './staff-sms.mjs';
 
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 export function sanitizeSmsUrl(value){return String(value??'').trim().replace(/^https?:\/\//i,'');}
@@ -12,6 +13,13 @@ export function phone(value){let p=String(value||'').replace(/[^\d]/g,'');if(p.l
 const day=now=>new Date(now+10800000).toISOString().slice(0,10);
 export const startAt=b=>b.plan==='season'?NaN:Date.parse(`${b.date}T${b.time}:00+03:00`);
 const accepted=['accepted','delivered','unknown','sending'];
+export function smsRejection(result,status){
+ const fields=result?.data&&typeof result.data==='object'?result.data:{};
+ if(fields.sign)return {ok:false,retry:false,error:'SMS Aero не принимает имя отправителя. Укажите SMS Aero или согласованное имя в настройках SMS.'};
+ if(fields.number||fields.numbers)return {ok:false,retry:false,error:'SMS Aero отклонил номер получателя. Проверьте телефон.'};
+ if(status===401||status===403)return {ok:false,retry:false,error:'SMS Aero отклонил доступ. Проверьте ключ API и учётную запись на сервере.'};
+ return {ok:false,retry:true,error:'Провайдер отклонил запрос (HTTP '+status+'). Проверьте баланс, отправителя и модерацию.'};
+}
 export class SmsService {
  constructor(env=process.env,request=fetch){this.env=env;this.request=request;}
  async call(path,body){
@@ -19,7 +27,7 @@ export class SmsService {
    const result=await r.json();
    if(result.success===true&&result.data)return {ok:true,data:result.data};
    // A structured rejection explicitly reports that this attempt was not accepted.
-   if(result.success===false)return {ok:false,retry:true,error:'Провайдер отклонил запрос (HTTP '+r.status+'). Проверьте баланс, отправителя и модерацию.'};
+   if(result.success===false)return smsRejection(result,r.status);
    return {ok:false,unknown:true,error:'Неоднозначный ответ провайдера; автоматический повтор остановлен.'};
   }catch{return {ok:false,unknown:true,error:'Ответ провайдера не получен. Возможна отправка; требуется сверка, чтобы не создать дубль.'};}
  }
@@ -35,8 +43,9 @@ export class SmsStore {
    CREATE TABLE IF NOT EXISTS sms_jobs(id INTEGER PRIMARY KEY,kind TEXT NOT NULL,inquiry_id INTEGER,discount_id INTEGER,client_id INTEGER NOT NULL REFERENCES clients(id),generation INTEGER NOT NULL DEFAULT 0,booking_start INTEGER,due INTEGER NOT NULL,status TEXT NOT NULL DEFAULT 'scheduled',attempts INTEGER NOT NULL DEFAULT 0,last_error TEXT NOT NULL DEFAULT '',sent_at INTEGER,provider_id INTEGER,claimed_at INTEGER,payload TEXT,phone TEXT,cancel_reason TEXT,changed INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL,checked_at INTEGER,UNIQUE(inquiry_id,generation),UNIQUE(discount_id));
    CREATE INDEX IF NOT EXISTS sms_due ON sms_jobs(status,due);
    CREATE TABLE IF NOT EXISTS discount_limits(key TEXT PRIMARY KEY,count INTEGER NOT NULL,expires INTEGER NOT NULL);`);
-  this.db.prepare('INSERT OR IGNORE INTO sms_settings(id,body) VALUES(1,?)').run(JSON.stringify({enabled:false,promoEnabled:true,remindersEnabled:true,sign:'СТАРТ',YANDEX_NAVIGATOR_URL:'https://yandex.ru/navi/org/start/239145365381',BOOKING_LATE_CANCEL_MINUTES:15,dailyLimit:10,promoCode:'АЭЛИТА',promoAmount:100}));
-  const stored=this.db.prepare('SELECT body FROM sms_settings WHERE id=1').get();let migrated;try{migrated=JSON.parse(stored.body);}catch{migrated={};}let changed=false;if(['SMS Aero','START'].includes(migrated.sign)){migrated.sign='СТАРТ';changed=true;}if(['AELITA','START10','PROMO10','TEST'].includes(migrated.promoCode)){migrated.promoCode='АЭЛИТА';changed=true;}if(changed)this.db.prepare('UPDATE sms_settings SET body=?,revision=revision+1 WHERE id=1').run(JSON.stringify(migrated));
+  this.db.prepare('INSERT OR IGNORE INTO sms_settings(id,body) VALUES(1,?)').run(JSON.stringify({enabled:false,promoEnabled:true,remindersEnabled:true,sign:'SMS Aero',YANDEX_NAVIGATOR_URL:'https://yandex.ru/navi/org/start/239145365381',BOOKING_LATE_CANCEL_MINUTES:15,dailyLimit:10,promoCode:'АЭЛИТА',promoAmount:100}));
+  const stored=this.db.prepare('SELECT body FROM sms_settings WHERE id=1').get();let migrated;try{migrated=JSON.parse(stored.body);}catch{migrated={};}let changed=false;if(['AELITA','START10','PROMO10','TEST'].includes(migrated.promoCode)){migrated.promoCode='АЭЛИТА';changed=true;}if(changed)this.db.prepare('UPDATE sms_settings SET body=?,revision=revision+1 WHERE id=1').run(JSON.stringify(migrated));
+  this.staffReminders=new StaffShiftReminders(admin,{phone,prepareSmsText,settings:()=>this.settings(),service:()=>new SmsService(this.env)});
   admin.sms=this;this.sync();
  }
  settings(){const row=this.db.prepare('SELECT * FROM sms_settings WHERE id=1').get();return {...JSON.parse(row.body),STATION_PHONE:this.content?.live().phone||defaults.phone,revision:row.revision,configured:Boolean(this.env.SMSAERO_EMAIL&&this.env.SMSAERO_API_KEY),transportEnabled:this.env.SMS_ENABLED==='true'};}
@@ -44,7 +53,8 @@ export class SmsStore {
   let url;try{url=new URL(b.YANDEX_NAVIGATOR_URL);}catch{fail('Проверьте ссылку на Яндекс.');}if(url.protocol!=='https:'||!['yandex.ru','yandex.com','maps.yandex.ru'].includes(url.hostname)||url.username||url.password||b.YANDEX_NAVIGATOR_URL.length>300)fail('Нужна HTTPS-ссылка на Яндекс.Карты или Навигатор.');
   for(const [k,min,max] of [['BOOKING_LATE_CANCEL_MINUTES',1,120],['dailyLimit',1,1000],['promoAmount',1,100000]])if(!Number.isInteger(b[k])||b[k]<min||b[k]>max)fail('Проверьте числовые настройки.');
   for(const k of ['enabled','promoEnabled','remindersEnabled'])if(typeof b[k]!=='boolean')fail('Проверьте переключатели.');
-  for(const k of ['sign','promoCode'])if(typeof b[k]!=='string'||!b[k].trim()||b[k].length>32||/[\x00-\x1f]/.test(b[k])||!/[А-Яа-яЁё]/.test(b[k]))fail('Имя отправителя и промокод должны быть на кириллице.');
+  for(const k of ['sign','promoCode'])if(typeof b[k]!=='string'||!b[k].trim()||b[k].length>32||/[\x00-\x1f]/.test(b[k]))fail('Проверьте имя отправителя и промокод.');
+  if(!/[А-Яа-яЁё]/.test(b.promoCode))fail('Промокод должен быть на кириллице.');
   const value={};for(const k of ['enabled','promoEnabled','remindersEnabled','sign','YANDEX_NAVIGATOR_URL','BOOKING_LATE_CANCEL_MINUTES','dailyLimit','promoCode','promoAmount'])value[k]=b[k];
   const result=this.db.prepare('UPDATE sms_settings SET body=?,revision=revision+1 WHERE id=1 AND revision=?').run(JSON.stringify(value),b.revision);if(!result.changes)fail('Настройки уже изменились.',409);this.admin.audit(user,'sms_settings');return this.settings();
  }
@@ -103,13 +113,13 @@ export class SmsStore {
     if((j.kind==='promo'&&!s.promoEnabled)||(j.kind==='reminder'&&!s.remindersEnabled))continue;
     // Claim and daily quota reservation are one SQLite transaction, safe across workers.
     this.db.exec('BEGIN IMMEDIATE');let message;
-    try{const count=this.db.prepare("SELECT count(*) n FROM sms_jobs WHERE claimed_at>=? AND status IN ('sending','unknown','accepted','delivered','failed')").get(Date.parse(day(now)+'T00:00:00+03:00')).n;if(count>=s.dailyLimit){this.db.exec('COMMIT');break;}
+    try{const count=dailySmsUsed(this.db,now);if(count>=s.dailyLimit){this.db.exec('COMMIT');break;}
      message=this.message(j);if(!message||j.kind==='reminder'&&j.booking_start<=now){this.db.prepare("UPDATE sms_jobs SET status='cancelled',cancel_reason='expired' WHERE id=? AND status IN ('scheduled','retry')").run(j.id);this.db.exec('COMMIT');continue;}
      const claim=this.db.prepare("UPDATE sms_jobs SET status='sending',attempts=attempts+1,claimed_at=?,payload=?,phone=? WHERE id=? AND status IN ('scheduled','retry')").run(now,message.text,message.number,j.id);this.db.exec('COMMIT');if(!claim.changes)continue;
     }catch(e){this.db.exec('ROLLBACK');throw e;}
     const result=await service.send(message.number,message.text,s.sign);
     if(result.ok&&Number.isSafeInteger(Number(result.data.id))&&Number(result.data.id)>0)this.db.prepare("UPDATE sms_jobs SET status='accepted',provider_id=?,sent_at=?,last_error='' WHERE id=?").run(Number(result.data.id),fixedTime?now:Date.now(),j.id);
-    else {const attempts=j.attempts+1;const unknown=result.unknown||result.ok;this.db.prepare('UPDATE sms_jobs SET status=?,due=?,last_error=? WHERE id=?').run(unknown?'unknown':attempts<5?'retry':'failed',now+Math.min(900000,60000*2**(attempts-1)),result.error||'Не получен номер сообщения. Нужна сверка.',j.id);}
+    else {const attempts=j.attempts+1;const unknown=result.unknown||result.ok;this.db.prepare('UPDATE sms_jobs SET status=?,due=?,last_error=? WHERE id=?').run(unknown?'unknown':result.retry!==false&&attempts<5?'retry':'failed',now+Math.min(900000,60000*2**(attempts-1)),result.error||'Не получен номер сообщения. Нужна сверка.',j.id);}
    }
    for(const j of this.db.prepare("SELECT * FROM sms_jobs WHERE status='accepted' AND provider_id IS NOT NULL AND coalesce(checked_at,sent_at,0)<? ORDER BY id LIMIT 10").all(now-60000)){
     const result=await service.status(j.provider_id);this.db.prepare('UPDATE sms_jobs SET checked_at=? WHERE id=?').run(now,j.id);
