@@ -3,6 +3,7 @@ import {normalizeInventoryName,quantity,quantityText} from './inventory.mjs';
 import {buildConsumablesPlan} from './cafe-consumables-plan.mjs';
 
 export function fillCafeConsumables(cafe,user){
+ if(user?.role!=='admin')throw Object.assign(new Error('Автозаполнение доступно только администратору.'),{status:403});
  const stock=cafe.stock,initial=stock.config(user),changes=[];
  const named=(config,name)=>config.inventory.filter(i=>normalizeInventoryName(i.name)===normalizeInventoryName(name));
  const paper=named(initial,'Пергамент');

@@ -8,7 +8,7 @@ export function clientRows(admin){
  if(exists('clients'))for(const c of db.prepare('SELECT name,phone FROM clients ORDER BY last_seen DESC').all())person(c.name,c.phone);
  for(const r of db.prepare('SELECT r.*,(SELECT coalesce(sum(amount),0) FROM payments p WHERE p.rental_id=r.id) paid FROM rentals r WHERE initial_due>=0').all()){
   const c=person(r.name,r.phone);if(!c)continue;const refund=db.prepare("SELECT coalesce(sum(amount_cents),0) n FROM customer_refunds WHERE kind='rental' AND source_id=?").get(r.id).n;
-  if(r.initial_due===0)c.days.add(day(Date.parse(r.departed+':00+03:00')||r.created));c.cents+=Math.max(0,r.paid-refund);
+  if(r.initial_due===0&&!r.departure_pending)c.days.add(day(r.departed_at??(Date.parse(r.departed+':00+03:00')||r.created)));c.cents+=Math.max(0,r.paid-refund);
  }
  if(exists('cafe_orders'))for(const r of db.prepare('SELECT * FROM cafe_orders').all()){
   const d=JSON.parse(r.details),c=person(d.name,d.phone);if(!c)continue;

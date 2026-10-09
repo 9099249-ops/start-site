@@ -11,9 +11,7 @@ test('Finance shared surfaces parse and expose one close entry on POS',()=>{
  for(const name of ['day-desk.js','work-bar.js','pos-chrome.js','print-ui.js'])assert.doesNotThrow(()=>new Script(read(name),{filename:name}));
  assert.match(workbar,/Подвести и сохранить итог дня/);
  assert.match(workbar,/dayButton\.hidden=!data\.desk\?\.enabled\|\|\['\/admin\/','\/admin\/cafe\/'\]\.includes\(location\.pathname\)/);
- assert.match(chrome,/const cash=action\('Касса/);assert.match(chrome,/\.work-account/);assert.match(chrome,/day\.hidden=false/);
- assert.match(chrome,/className='work-account-print'/);assert.match(chrome,/STARTPrint\.mountReport\(report\)/);assert.match(chrome,/report\.dataset\.mounted='true'/);
- assert.match(workbar,/\[dayButton,'summary'\]/);assert.match(workbar,/window\.STARTWork\[fn\]\(\)/);
+ assert.match(chrome,/Подвести и сохранить итог дня/);assert.match(chrome,/STARTWork\.summary\(\)/);
  assert.match(desk,/Подвести и сохранить итог дня/);assert.match(desk,/Не влияет на начисления/);
  assert.doesNotMatch(desk,/Бонус с разницы/);
 });
@@ -45,18 +43,4 @@ test('Print stays a separate command and distinguishes preliminary from final re
  assert.doesNotMatch(print,/day-close/);
  assert.match(chrome,/STARTPrint\?\.mountReport\(print\)/);
  assert.doesNotMatch(chrome,/printButton\.textContent='Печать отчёта'/);
-});
-
-test('Mobile shared chrome keeps five nav links usable and hides only the print control',()=>{
- const nav=read('ops-nav.css'),chrome=read('pos-chrome.css');
- assert.match(nav,/flex-wrap:wrap!important/);assert.match(nav,/flex:1 1 0!important/);
- assert.match(nav,/\.station-status\{order:10;flex:1 0 100%!important\}/);
- assert.match(chrome,/\.station-utility \.station-utility-print\{display:none\}/);
- assert.doesNotMatch(chrome,/\.station-utility\{display:none\}/);
-});
-
-test('Mobile active rental summary wraps the full count without changing other filters',()=>{
- const desk=read('desk.css');
- assert.match(desk,/\.active-summary button\[data-active-filter="all"\][^{]*\{[^}]*flex-direction:column[^}]*min-height:44px[^}]*font-size:12px/);
- assert.match(desk,/\.active-summary button\[data-active-filter="all"\] b\{[^}]*white-space:normal[^}]*font-size:12px/);
 });

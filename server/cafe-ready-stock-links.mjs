@@ -32,6 +32,7 @@ const key=normalizeInventoryName;
 const named=(name,aliases)=>aliases.some(alias=>key(name)===key(alias));
 
 export function linkReadyMadeProducts(cafe,user){
+  if(user?.role!=='admin')throw Object.assign(new Error('Автозаполнение доступно только администратору.'),{status:403});
   const stock=cafe.stock,config=stock.config(user),catalog=cafe.catalog();
   return mappings.map(mapping=>{
     const result={name:mapping.menu[0],...(mapping.variants?{variant:mapping.variants[0]}:{})};

@@ -1,7 +1,7 @@
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 
-export const workspacePages=new Map(['index','cafe','purchase','tasks','settings','workforce','schedule','accounts','aqsi','cafe-stock'].map(name=>[name==='index'?'/admin/':`/admin/${name}/`,name]));
+export const workspacePages=new Map(['index','cafe','purchase','tasks','settings','workforce','schedule','accounts','aqsi','cafe-stock','operations-analytics','financial-analytics','battery-state'].map(name=>[name==='index'?'/admin/':`/admin/${name}/`,name]));
 export async function serveWorkspace(req,res,url,root,decorate=html=>html){
  if(process.env.START_WORKSPACE_SHELL==='0'||!workspacePages.has(url.pathname)||!['GET','HEAD'].includes(req.method))return false;
  const embedded=req.headers['sec-fetch-dest']==='iframe'||url.searchParams.get('embedded')==='1';

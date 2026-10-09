@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>СТАРТ · Аналитика операций</title>
+<link rel="icon" href="/assets/start-favicon-v2-32.png">
+<link rel="stylesheet" href="/admin/cafe.css">
+<link rel="stylesheet" href="/admin/ops-nav.css?v=operations-analytics-20261007-3">
+<link rel="stylesheet" href="/admin/operations-analytics.css?v=finance-expenses-20261008-2">
+<script defer src="/admin/ops-nav.js?v=operations-analytics-20261007-2"></script>
+<script defer src="/admin/operations-analytics.js?v=finance-expenses-20261007-1"></script>
+</head>
+<body class="theme-rental analytics-page">
+<main id="operations-analytics" data-scope="operations" aria-busy="true">
+ <header class="oa-heading"><a class="oa-brand" href="/admin/" aria-label="СТАРТ — главная"><img src="/assets/start-logo-horizontal.webp" alt="СТАРТ" width="180" height="60"></a><div><h1>Аналитика операций</h1><p id="oa-period-label">Загрузка…</p></div><button id="oa-export" type="button" class="oa-button" disabled>Экспорт CSV</button></header>
+ <section class="oa-controls" aria-label="Период отчёта">
+  <div class="oa-presets" role="group" aria-label="Быстрый период"><button type="button" data-preset="today">Сегодня</button><button type="button" data-preset="week">Неделя</button><button type="button" data-preset="month" aria-pressed="true">Месяц</button><button type="button" data-preset="custom">Период</button></div>
+  <label>С <input id="oa-from" type="date"></label><label>По <input id="oa-to" type="date"></label><button id="oa-apply" type="button" class="oa-button oa-primary">Показать</button>
+ </section>
+ <p id="oa-message" class="oa-message" role="status" aria-live="polite">Загрузка отчёта…</p>
+ <div id="oa-warnings" class="oa-warnings" hidden></div>
+ <nav class="oa-tabs" role="tablist" aria-label="Разделы операций"><button type="button" role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true" data-tab="overview">Обзор</button><button type="button" role="tab" id="tab-employees" aria-controls="panel-employees" aria-selected="false" data-tab="employees">Сотрудники</button><button type="button" role="tab" id="tab-cafe" aria-controls="panel-cafe" aria-selected="false" data-tab="cafe">Кафе</button><button type="button" role="tab" id="tab-rental" aria-controls="panel-rental" aria-selected="false" data-tab="rental">Прокат</button></nav>
+ <section id="panel-overview" class="oa-panel" role="tabpanel" aria-labelledby="tab-overview"><div id="oa-kpis" class="oa-kpis"></div><div class="oa-overview-grid"><section class="oa-section oa-employee-overview"><h2>Сотрудники</h2><div id="oa-hours-chart" aria-label="Сравнение часов, задач, опозданий и переработки сотрудников"></div></section><section class="oa-section oa-trends-overview"><div class="oa-section-heading"><h2>Популярность позиций</h2><div class="oa-period-toggle" role="group" aria-label="Период графиков"><button type="button" data-trend-mode="day" aria-pressed="true">По дням</button><button type="button" data-trend-mode="hour" aria-pressed="false">По часам</button></div></div><div class="oa-trend-grid"><section class="oa-trend"><h3>Кафе · топ-3</h3><div id="oa-cafe-trend"></div></section><section class="oa-trend"><h3>Прокат · топ-3</h3><div id="oa-rental-trend"></div></section></div></section><section class="oa-section oa-overview-top"><h2>Топ-5 кафе</h2><div id="oa-top-cafe"></div></section><section class="oa-section oa-overview-top"><h2>Топ-5 проката</h2><div id="oa-top-rental"></div></section></div></section>
+ <section id="panel-employees" class="oa-panel" role="tabpanel" aria-labelledby="tab-employees" hidden><div class="oa-section"><h2>Сотрудники</h2><div class="oa-table-wrap"><table><thead><tr><th>Сотрудник</th><th>Часы</th><th>Задачи · всего / разовые / регулярные</th><th>Назначено</th><th>Доля задач</th><th>Опоздания</th><th>В 09:00</th><th>Переработка</th><th>Проверка</th><th>Невыходы</th><th>Смены</th></tr></thead><tbody id="oa-employees"></tbody></table></div></div></section>
+ <section id="panel-cafe" class="oa-panel" role="tabpanel" aria-labelledby="tab-cafe" hidden><p class="oa-cost-note">Спрос без привязки к оплате; бесплатные и неоплаченные позиции показаны отдельно.</p><label class="oa-filter">Позиция <select id="oa-cafe-item-filter"><option value="">Все позиции</option></select></label><section class="oa-section"><h2>По дням</h2><div id="oa-cafe-daily" class="oa-daily-chart"></div><h2>Среднее по дням недели и часам</h2><div id="oa-cafe-heatmap" class="oa-heatmap"></div></section><div class="oa-section"><h2>Позиции кафе</h2><div class="oa-table-wrap"><table><thead><tr><th>Позиция</th><th>Спрос</th><th>Не оплачено</th><th>Бесплатно</th><th>Отменено</th></tr></thead><tbody id="oa-cafe-items"></tbody></table></div></div></section>
+ <section id="panel-rental" class="oa-panel" role="tabpanel" aria-labelledby="tab-rental" hidden><label class="oa-filter">Техника <select id="oa-rental-item-filter"><option value="">Вся техника</option></select></label><section class="oa-section"><h2>По дням</h2><div id="oa-rental-daily" class="oa-daily-chart"></div><h2>Среднее по дням недели и часам</h2><div id="oa-rental-heatmap" class="oa-heatmap"></div></section><div class="oa-section"><h2>Позиции проката</h2><div class="oa-table-wrap"><table><thead><tr><th>Позиция</th><th>Выдачи</th><th>Единиц</th><th>Часы × единицы</th></tr></thead><tbody id="oa-rental-items"></tbody></table></div></div></section>
+  <dialog id="oa-employee-dialog" class="oa-dialog"><form method="dialog"><button class="oa-dialog-close" aria-label="Закрыть">×</button></form><h2 id="oa-dialog-title"></h2><div id="oa-dialog-content"></div></dialog>
+</main>
+</body>
+</html>

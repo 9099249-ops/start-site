@@ -2,14 +2,16 @@ import {readFileSync} from 'node:fs';
 import {InventoryStore,quantity,quantityText} from './inventory.mjs';
 import {buildConsumablesPlan} from './cafe-consumables-plan.mjs';
 const fail=(message,status=409,extra={})=>{throw Object.assign(new Error(message),{status,...extra});};
+const editor=u=>{if(!['admin','staff','waiter'].includes(u?.role))fail('Нет доступа к редактированию блюд.',403);};
 export class CafeStock{
  constructor(cafe){this.cafe=cafe;this.db=cafe.db;this.inventory=new InventoryStore(cafe.admin);this.db.exec(readFileSync(new URL('./migrations/003-cafe-stock.sql',import.meta.url),'utf8'));}
  recipe(itemId,component){const r=this.db.prepare('SELECT * FROM cafe_recipes WHERE item_id=? AND component=?').get(itemId,component);return r?{...r,ingredients:JSON.parse(r.body)}:null;}
  provenance(){if(!this.db.prepare("SELECT name FROM sqlite_master WHERE name='cafe_audit'").get())return [];return this.db.prepare("SELECT body FROM cafe_audit WHERE action='consumables_autofill' ORDER BY id DESC LIMIT 2000").all().map(r=>JSON.parse(r.body));}
- config(u){if(u?.role!=='admin')fail('Доступно только admin.',403);const catalog=this.cafe.catalog(),inventory=this.inventory.catalog(u),data={items:catalog.items,categories:catalog.categories,groups:catalog.groups,units:inventory.units,recipes:this.db.prepare('SELECT * FROM cafe_recipes').all().map(r=>({...r,ingredients:JSON.parse(r.body)})),inventory:inventory.items,provenance:this.provenance()};return {...data,consumablesPlan:buildConsumablesPlan(data)};}
- save(b,u,provenance=null){if(u?.role!=='admin')fail('Доступно только admin.',403);const item=this.cafe.catalog().items.find(i=>i.id===b.itemId);if(!item)fail('Блюдо не найдено.',404);const components=['base',...item.variants.map(v=>'variant:'+v.id),...this.cafe.catalog().groups.filter(g=>item.groupIds.includes(g.id)).flatMap(g=>g.options.map(o=>'option:'+o.id))];if(!components.includes(b.component)||!Array.isArray(b.ingredients)||b.ingredients.length>30||(!b.ingredients.length&&!b.component.startsWith('option:')))fail('Укажите расход на одну порцию.',400);
+ incompleteTeaVariants(itemId){const catalog=this.cafe.catalog(),item=catalog.items.find(i=>i.id===itemId);return item?.station==='bar'&&catalog.categories.some(c=>c.id===item.categoryId&&c.name.trim().toLocaleLowerCase('ru-RU')==='чай');}
+ config(u){editor(u);const catalog=this.cafe.catalog(),inventory=this.inventory.catalog(u),data={items:catalog.items,categories:catalog.categories,groups:catalog.groups,units:inventory.units,recipes:this.db.prepare('SELECT * FROM cafe_recipes').all().map(r=>({...r,ingredients:JSON.parse(r.body)})),inventory:inventory.items,provenance:this.provenance()};return {...data,consumablesPlan:buildConsumablesPlan(data)};}
+ save(b,u,provenance=null,transaction=fn=>this.cafe.transaction(fn),syncCosts=true){editor(u);const item=this.cafe.catalog().items.find(i=>i.id===b.itemId);if(!item)fail('Блюдо не найдено.',404);const components=['base',...item.variants.map(v=>'variant:'+v.id),...this.cafe.catalog().groups.filter(g=>item.groupIds.includes(g.id)).flatMap(g=>g.options.map(o=>'option:'+o.id))];if(!components.includes(b.component)||!Array.isArray(b.ingredients)||b.ingredients.length>30||(!b.ingredients.length&&!b.component.startsWith('option:')))fail('Укажите расход на одну порцию.',400);
  const option=b.component.startsWith('option:')?this.cafe.catalog().groups.filter(g=>item.groupIds.includes(g.id)).flatMap(g=>g.options).find(o=>'option:'+o.id===b.component):null;if(option&&((option.id==='coffee_sugar-0'&&option.name==='Без сахара')||(option.id==='coffee_milk-0'&&option.name==='Обычное'))&&b.ingredients.length)fail('Эта опция не добавляет ингредиенты. Кофе и обычное молоко укажите только в основной порции.',400);
- return this.cafe.transaction(()=>{const old=this.recipe(b.itemId,b.component);if(b.revision!==(old?.revision??-1))fail('Рецептура изменена. Обновите страницу.');const seen=new Set(),replaced=new Set(),ingredients=b.ingredients.map(i=>{
+ return transaction(()=>{const old=this.recipe(b.itemId,b.component);if(b.revision!==(old?.revision??-1))fail('Рецептура изменена. Обновите страницу.');const seen=new Set(),replaced=new Set(),ingredients=b.ingredients.map(i=>{
   if(!i||typeof i!=='object'||Array.isArray(i))fail('Проверьте товар и расход.',400);
   const row=this.inventory.row(i.id),amount=quantity(i.amount);if(!row.active||!amount||seen.has(i.id))fail('Проверьте товар и расход.',400);seen.add(i.id);
   const ingredient={id:i.id,unitId:row.unit_id,amount};
@@ -19,12 +21,16 @@ export class CafeStock{
    replaced.add(i.replacesId);ingredient.replacesId=i.replacesId;
   }
   return ingredient;
- });this.db.prepare('INSERT INTO cafe_recipes VALUES(?,?,?,0) ON CONFLICT(item_id,component) DO UPDATE SET body=excluded.body,revision=revision+1').run(b.itemId,b.component,JSON.stringify(ingredients));const after=this.recipe(b.itemId,b.component);this.cafe.audit(u,'recipe',{before:old,after});if(provenance)this.cafe.audit(u,'consumables_autofill',{itemId:b.itemId,component:b.component,recipeRevision:after.revision,additions:provenance.additions});return after;});}
+ });this.db.prepare('INSERT INTO cafe_recipes VALUES(?,?,?,0) ON CONFLICT(item_id,component) DO UPDATE SET body=excluded.body,revision=revision+1').run(b.itemId,b.component,JSON.stringify(ingredients));const after=this.recipe(b.itemId,b.component);this.cafe.audit(u,'recipe',{before:old,after});if(provenance)this.cafe.audit(u,'consumables_autofill',{itemId:b.itemId,component:b.component,recipeRevision:after.revision,additions:provenance.additions});if(syncCosts)this.cafe.recipeCosts?.syncRecipeCosts(u);return after;});}
  requirements(line,recipeFor=(itemId,component)=>this.recipe(itemId,component)){
   if(line.custom===true)return [];
   const unconfigured=()=>fail(`«${line.name}»: расход ещё не настроен. Обратитесь к администратору.`,409,{stockCode:'UNCONFIGURED',itemId:line.itemId,available:0});
   const load=key=>{const recipe=recipeFor(line.itemId,key);if(!recipe)unconfigured();return recipe.ingredients;};
-  const base=load(line.variant?'variant:'+line.variant.id:'base'),options=(line.modifiers||[]).flatMap(m=>load('option:'+m.optionId)),replaced=new Set();
+  // Brewed tea types may have unknown norms; packaged products remain strict.
+  // Consume only an explicit shared base, never another type's ingredients.
+  const variantRecipe=line.variant?recipeFor(line.itemId,'variant:'+line.variant.id):null;
+  const shared=recipeFor(line.itemId,'base');
+  const base=line.variant?(line.variant.useBaseRecipe===true?(shared?shared.ingredients:this.incompleteTeaVariants(line.itemId)?[]:load('base')):variantRecipe?variantRecipe.ingredients:this.incompleteTeaVariants(line.itemId)?(line.variant.useBaseRecipe===false?[]:shared?.ingredients||[]):load('variant:'+line.variant.id)):load('base'),options=(line.modifiers||[]).flatMap(m=>load('option:'+m.optionId)),replaced=new Set();
   for(const ingredient of options){if(ingredient.replacesId===undefined)continue;
    if(!base.some(i=>i.id===ingredient.replacesId)||replaced.has(ingredient.replacesId))unconfigured();
    replaced.add(ingredient.replacesId);
@@ -87,5 +93,5 @@ export class CafeStock{
   const plan=buildConsumablesPlan({...d,recipes:recipeRows,inventory,provenance:this.provenance()});
   const incomplete=new Set(plan.rows.filter(r=>r.itemId&&(r.status!=='existing'||r.source==='assumed'||r.reason)).map(r=>r.itemId));
   const context={recipeFor:(id,key)=>recipes.get(id+'\0'+key),stockFor:id=>{if(!stocks.has(id))stocks.set(id,this.inventory.row(id));return stocks.get(id);}};
-  for(const i of d.items)i.stock={...this.availability(i,d.groups,context),accountingIncomplete:incomplete.has(i.id)};return d;}
+  for(const i of d.items){const recipeMissing=i.variants.some(v=>v.active&&!(v.useBaseRecipe===true?context.recipeFor(i.id,'base'):context.recipeFor(i.id,'variant:'+v.id)))&&this.incompleteTeaVariants(i.id),unknownNorms=!!i.missingRecipeNorms?.length||i.variants.some(v=>v.active&&v.missingRecipeNorms?.length);i.stock={...this.availability(i,d.groups,context),recipeMissing,accountingIncomplete:incomplete.has(i.id)||recipeMissing||unknownNorms};}return d;}
 }

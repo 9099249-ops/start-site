@@ -33,7 +33,8 @@ function ingredient(item, amount, largeUnits, smallUnits) {
 }
 
 export function linkCoffeeStock(cafe, user, plan) {
-  const stock = cafe.stock, config = stock.config(user); // Existing admin check.
+  if(user?.role!=='admin')throw Object.assign(new Error('Автозаполнение доступно только администратору.'),{status:403});
+  const stock = cafe.stock, config = stock.config(user);
   validatePlan(plan); // Validate the entire plan before the first recipe write.
   const exactStock = name => {
     const matches = config.inventory.filter(item => item.active && item.name === name);

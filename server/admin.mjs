@@ -5,6 +5,7 @@ import {fleetOrder,orderedFleet,saveFleetOrder} from './fleet-order.mjs';
 import {RefundStore} from './refunds.mjs';
 import {rentalRates} from './rental-pricing.mjs';
 import {extendRental,undoReturn,deskSearch,nearbyBookings} from './rental-actions.mjs';
+import {initializeDepartures,departRental} from './rental-departure.mjs';
 import {AccountsStore} from './accounts.mjs';
 import {TasksStore} from './tasks.mjs';
 import {WorkforceStore} from './workforce.mjs';
@@ -41,7 +42,7 @@ export class AdminStore{
  CREATE TABLE IF NOT EXISTS payroll_payments(id INTEGER PRIMARY KEY,shift_id INTEGER NOT NULL,user_id INTEGER NOT NULL REFERENCES admin_users(id),amount_cents INTEGER NOT NULL,paid_at INTEGER NOT NULL,paid_by INTEGER NOT NULL REFERENCES admin_users(id));
  CREATE TABLE IF NOT EXISTS telegram_settings(id INTEGER PRIMARY KEY CHECK(id=1),enabled INTEGER NOT NULL DEFAULT 1,owner_chat_id TEXT NOT NULL DEFAULT '');
  INSERT OR IGNORE INTO telegram_settings(id) VALUES(1);
- `);if(!this.db.prepare('PRAGMA table_info(rentals)').all().some(c=>c.name==='revision'))this.db.exec('ALTER TABLE rentals ADD COLUMN revision INTEGER NOT NULL DEFAULT 0');if(!this.db.prepare('PRAGMA table_info(rentals)').all().some(c=>c.name==='expected_return'))this.db.exec('ALTER TABLE rentals ADD COLUMN expected_return INTEGER');this.db.exec("UPDATE rentals SET expected_return=CAST(strftime('%s',departed||':00+03:00') AS INTEGER)*1000+3600000 WHERE expected_return IS NULL");for(const [name,type] of [['initial_due','INTEGER NOT NULL DEFAULT 0'],['extension_due','INTEGER NOT NULL DEFAULT 0'],['people','INTEGER'],['custom_json','TEXT']])if(!this.db.prepare('PRAGMA table_info(rentals)').all().some(c=>c.name===name))this.db.exec('ALTER TABLE rentals ADD COLUMN '+name+' '+type);this.accounts=new AccountsStore(this);this.workforce=new WorkforceStore(this);this.refunds=new RefundStore(this);this.cashLedger=new CashLedger(this);this.tasks=new TasksStore(this);this.schedule=new ScheduleStore(this);}
+ `);if(!this.db.prepare('PRAGMA table_info(rentals)').all().some(c=>c.name==='revision'))this.db.exec('ALTER TABLE rentals ADD COLUMN revision INTEGER NOT NULL DEFAULT 0');if(!this.db.prepare('PRAGMA table_info(rentals)').all().some(c=>c.name==='expected_return'))this.db.exec('ALTER TABLE rentals ADD COLUMN expected_return INTEGER');this.db.exec("UPDATE rentals SET expected_return=CAST(strftime('%s',departed||':00+03:00') AS INTEGER)*1000+3600000 WHERE expected_return IS NULL");for(const [name,type] of [['initial_due','INTEGER NOT NULL DEFAULT 0'],['extension_due','INTEGER NOT NULL DEFAULT 0'],['people','INTEGER'],['custom_json','TEXT']])if(!this.db.prepare('PRAGMA table_info(rentals)').all().some(c=>c.name===name))this.db.exec('ALTER TABLE rentals ADD COLUMN '+name+' '+type);initializeDepartures(this.db);this.accounts=new AccountsStore(this);this.workforce=new WorkforceStore(this);this.refunds=new RefundStore(this);this.cashLedger=new CashLedger(this);this.tasks=new TasksStore(this);this.schedule=new ScheduleStore(this);}
  configured(){return this.db.prepare('SELECT count(*) n FROM admin_users').get().n>0;}
  setupToken(token){if(this.configured())fail('Учётные записи уже созданы.',409);this.db.prepare("INSERT INTO admin_config VALUES('setup',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(hash(token));}
  limit(key,limit=8,now=Date.now()){
@@ -57,9 +58,20 @@ export class AdminStore{
   if(b.adminPassword===b.staffPassword)fail('Используйте разные пароли для двух учётных записей.');
   this.db.exec('BEGIN IMMEDIATE');try{if(this.configured())fail('Настройка уже завершена.',409);this.db.prepare('INSERT INTO admin_users(login,role,password) VALUES(?,?,?)').run('admin','admin',admin);this.db.prepare('INSERT INTO admin_users(login,role,password) VALUES(?,?,?)').run('station','staff',staff);this.db.prepare("DELETE FROM admin_config WHERE key='setup'").run();this.db.exec('COMMIT');}catch(e){this.db.exec('ROLLBACK');throw e;}
  }
- login(b,ip){this.limit('login:'+ip);if(typeof b.login!=='string'||!/^[a-z][a-z0-9_-]{2,30}$/.test(b.login))fail('Неверный логин или пароль.',401);
-  const u=this.db.prepare('SELECT * FROM admin_users WHERE login=?').get(b.login);
-  if(!u||this.accounts.archived(u.id)||!verify(b.password,u.password))fail('Неверный логин или пароль.',401);
+ login(b,ip){
+  const now=Date.now(),validLogin=typeof b.login==='string'&&/^[a-z][a-z0-9_-]{2,30}$/.test(b.login);
+  const accountKey='login-failed-account:'+JSON.stringify([String(ip),validLogin?b.login:'invalid']),ipKey='login-failed-ip:'+String(ip);
+  this.db.prepare('DELETE FROM admin_attempts WHERE expires<=?').run(now);
+  // Successful sign-ins must not exhaust a shared station's failed-password budget.
+  for(const [key,maximum] of [[accountKey,8],[ipKey,40]]){
+   if((this.db.prepare('SELECT count FROM admin_attempts WHERE key=?').get(hash(key))?.count||0)>=maximum)fail('Слишком много неверных попыток входа. Повторите через 15 минут.',429);
+  }
+  const u=validLogin?this.db.prepare('SELECT * FROM admin_users WHERE login=?').get(b.login):null;
+  if(!u||this.accounts.archived(u.id)||!verify(b.password,u.password)){
+   this.limit(ipKey,40,now);this.limit(accountKey,8,now);
+   fail('Неверный логин или пароль.',401);
+  }
+  this.db.prepare('DELETE FROM admin_attempts WHERE key=?').run(hash(accountKey));
   const token=randomBytes(32).toString('hex');this.db.prepare('DELETE FROM admin_sessions WHERE expires<?').run(Date.now());this.db.prepare('INSERT INTO admin_sessions VALUES(?,?,?)').run(hash(token),u.id,Date.now()+43200000);return token;
  }
  user(token,allowSchedule=false){if(!token)return null;const user=this.db.prepare('SELECT u.id,u.login,u.role FROM admin_sessions s JOIN admin_users u ON u.id=s.user_id WHERE s.token=? AND s.expires>? AND NOT EXISTS(SELECT 1 FROM archived_accounts a WHERE a.user_id=u.id)').get(hash(token),Date.now())||null;if(user&&this.schedule.enabled()&&!this.schedule.canWork(user))return allowSchedule?{...user,scheduleOnly:true}:null;return user;}
@@ -103,14 +115,15 @@ export class AdminStore{
    assertCapacity(this.db,fleet,{equipment:b.equipment,quantity:b.quantity,start:departure,end:expected},{ignoreInquiry:inquiry?.id||0,now,close:this.sms?.content?.live().close});
    const active=this.db.prepare('SELECT coalesce(sum(quantity),0) n FROM rentals WHERE equipment=? AND returned IS NULL').get(b.equipment).n;
    if(active+b.quantity>item[2])fail('Недостаточно свободной техники. Обновите список или отметьте возврат.',409);
-   const id=Number(this.db.prepare('INSERT INTO rentals(request_id,equipment,quantity,name,phone,departed,created,created_by) VALUES(?,?,?,?,?,?,?,?)').run(b.requestId,b.equipment,b.quantity,b.name.trim(),b.phone.trim(),b.departed,now,user.id).lastInsertRowid);
+   const id=Number(this.db.prepare('INSERT INTO rentals(request_id,equipment,quantity,name,phone,departed,created,created_by,departure_pending) VALUES(?,?,?,?,?,?,?,?,?)').run(b.requestId,b.equipment,b.quantity,b.name.trim(),b.phone.trim(),b.departed,now,user.id,1).lastInsertRowid);
    const people=b.equipment==='big'?Number(b.people??linked?.quantity):null;if(b.equipment==='big'&&(!Number.isSafeInteger(people)||people<1||people>20))fail('Укажите количество человек на Big SUP (1–20).');this.db.prepare('UPDATE rentals SET expected_return=?,people=? WHERE id=?').run(expected,people,id);
+   if(b.catamaranLabel){if(!this.batteryTrips)fail('Привязка катамаранов недоступна.');this.batteryTrips.assignPending(id,b.catamaranLabel,user,now);}
    if(b.guestBillId!==undefined){if(!this.guestBills)fail('Счета недоступны.');const bill=this.guestBills.attach(b.guestBillId,'rental',id,paid,user);this.db.prepare('UPDATE rentals SET initial_due=? WHERE id=?').run(bill.deferred?0:paid,id);}else if(this.rentalTerminal?.enabled&&paid>0)this.db.prepare('UPDATE rentals SET initial_due=? WHERE id=?').run(paid,id);else this.db.prepare('INSERT INTO payments(rental_id,amount,method,day,created,user_id,note) VALUES(?,?,?,?,?,?,?)').run(id,paid,b.method,moscowDay(now),now,user.id,'Оплата при выдаче');if(inquiry){const status=this.rentalTerminal?.enabled&&paid>0?'payment_pending':'issued';this.db.prepare('UPDATE inquiries SET status=?,rental_id=?,actor=?,updated=?,revision=revision+1 WHERE id=?').run(status,id,user.id,now,inquiry.id);this.db.prepare('INSERT INTO inquiry_events(inquiry_id,actor,status,created) VALUES(?,?,?,?)').run(inquiry.id,user.id,status,now);}this.audit(user,'issue',id);this.db.exec('COMMIT');return id;
   }catch(e){this.db.exec('ROLLBACK');throw e;}
  }
  returned(id,user,now=Date.now(),revision,payment){
   if(!Number.isSafeInteger(id)||id<1)fail('Неверный номер проката.');
-  this.db.exec('BEGIN IMMEDIATE');try{const row=this.db.prepare('SELECT * FROM rentals WHERE id=?').get(id);if(!row)fail('Прокат не найден.',404);if(row.initial_due!==0)fail('Сначала завершите оплату выдачи.',409);if(this.rentalTerminal?.enabled&&row.extension_due>0)fail('Доплата ожидает подтверждения кассы.',409);if(!row.returned){if(revision!==undefined&&revision!==row.revision)fail('Аренда изменена. Проверьте доплату и повторите возврат.',409);if(row.extension_due>0){if(revision!==row.revision||payment?.confirmed!==true||payment.amountCents!==row.extension_due||!['cash','card'].includes(payment.method))fail('Подтвердите сумму и фактический способ полученной доплаты.',409);this.db.prepare('INSERT INTO payments(rental_id,amount,method,day,created,user_id,note) VALUES(?,?,?,?,?,?,?)').run(id,row.extension_due,payment.method,this.workforce.accountingDay(now),now,user.id,'Доплата за продление при возврате');this.db.prepare('UPDATE rentals SET extension_due=0 WHERE id=?').run(id);}this.db.prepare('UPDATE rentals SET returned=?,returned_by=?,revision=revision+1 WHERE id=?').run(now,user.id,id);this.audit(user,'return',id);}this.db.exec('COMMIT');}catch(e){this.db.exec('ROLLBACK');throw e;}
+  this.db.exec('BEGIN IMMEDIATE');try{const row=this.db.prepare('SELECT * FROM rentals WHERE id=?').get(id);if(!row)fail('Прокат не найден.',404);if(row.initial_due!==0)fail('Сначала завершите оплату выдачи.',409);if(row.departure_pending)fail('Отплытие ещё не отмечено. Для отмены оплаченной аренды оформите возврат денег.',409);if(this.rentalTerminal?.enabled&&row.extension_due>0)fail('Доплата ожидает подтверждения кассы.',409);if(!row.returned){if(revision!==undefined&&revision!==row.revision)fail('Аренда изменена. Проверьте доплату и повторите возврат.',409);if(row.extension_due>0){if(revision!==row.revision||payment?.confirmed!==true||payment.amountCents!==row.extension_due||!['cash','card'].includes(payment.method))fail('Подтвердите сумму и фактический способ полученной доплаты.',409);this.db.prepare('INSERT INTO payments(rental_id,amount,method,day,created,user_id,note) VALUES(?,?,?,?,?,?,?)').run(id,row.extension_due,payment.method,this.workforce.accountingDay(now),now,user.id,'Доплата за продление при возврате');this.db.prepare('UPDATE rentals SET extension_due=0 WHERE id=?').run(id);}this.db.prepare('UPDATE rentals SET returned=?,returned_by=?,revision=revision+1 WHERE id=?').run(now,user.id,id);this.audit(user,'return',id);}this.db.exec('COMMIT');}catch(e){this.db.exec('ROLLBACK');throw e;}
  }
  rentalRequest(requestId,user){
   if(typeof requestId!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(requestId))fail('Неверный запрос выдачи.');
@@ -160,10 +173,10 @@ export class AdminStore{
    const payments=this.db.prepare('SELECT * FROM payments WHERE rental_id=?').all(b.id);if(payments.length!==1)fail('Для этой записи требуется отдельная сверка платежей.',409);
    if(row.returned===null){const used=this.db.prepare('SELECT coalesce(sum(quantity),0) n FROM rentals WHERE equipment=? AND returned IS NULL AND id<>?').get(b.equipment,b.id).n;if(used+b.quantity>item[2])fail('Недостаточно свободной техники.',409);}
    if(row.returned===null)assertCapacity(this.db,fleet,{equipment:b.equipment,quantity:b.quantity,start:departure,end:Math.max(row.expected_return||departure+3600000,now+1)},{ignoreRental:row.id,now,close:this.sms?.content?.live().close});
-   const p=payments[0],before={equipment:row.equipment,quantity:row.quantity,name:row.name,phone:row.phone,departed:row.departed,amount:p.amount,method:p.method},after={equipment:b.equipment,quantity:b.quantity,name:b.name.trim(),phone:b.phone.trim(),departed:b.departed,amount:paid,method:b.method};
+   if(row.departure_pending&&b.equipment!==row.equipment)fail('До отплытия нельзя менять вид техники. Отмените аренду и оформите новую.',409);const pendingDuration=row.departure_pending?row.expected_return-localStamp(row.departed):null;const p=payments[0],before={equipment:row.equipment,quantity:row.quantity,name:row.name,phone:row.phone,departed:row.departed,amount:p.amount,method:p.method},after={equipment:b.equipment,quantity:b.quantity,name:b.name.trim(),phone:b.phone.trim(),departed:b.departed,amount:paid,method:b.method};
    if((p.amount!==paid||p.method!==b.method)&&this.currentShift(this.workforce.accountingDay(p.created))?.closed_at)fail('Этот платёж уже вошёл в сохранённый итог дня. Используйте возврат или отдельную корректировку, не переписывайте оплату.',409);
    if(JSON.stringify(before)===JSON.stringify(after))fail('Изменений нет.');
-   this.db.prepare('UPDATE rentals SET equipment=?,quantity=?,name=?,phone=?,departed=?,revision=revision+1 WHERE id=?').run(after.equipment,after.quantity,after.name,after.phone,after.departed,b.id);
+   this.db.prepare('UPDATE rentals SET equipment=?,quantity=?,name=?,phone=?,departed=?,revision=revision+1 WHERE id=?').run(after.equipment,after.quantity,after.name,after.phone,after.departed,b.id);if(row.departure_pending)this.db.prepare('UPDATE rentals SET expected_return=? WHERE id=?').run(departure+pendingDuration,b.id);else if(row.departed_at!==null&&after.departed!==row.departed)this.db.prepare('UPDATE rentals SET departed_at=? WHERE id=?').run(departure,b.id);
    this.db.prepare('UPDATE payments SET amount=?,method=? WHERE id=?').run(paid,b.method,p.id);
    this.db.prepare('INSERT INTO rental_changes(rental_id,actor,created,reason,before_json,after_json) VALUES(?,?,?,?,?,?)').run(b.id,user.id,now,b.reason.trim(),JSON.stringify(before),JSON.stringify(after));this.audit(user,'edit',b.id);this.db.exec('COMMIT');
   }catch(e){this.db.exec('ROLLBACK');throw e;}
@@ -171,11 +184,11 @@ export class AdminStore{
  dashboard(day,user){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||!Number.isFinite(Date.parse(day))||new Date(day).toISOString().slice(0,10)!==day)fail('Неверная дата.');
   const rates=rentalRates(this);const sql=`WITH payment_totals AS (SELECT rental_id,sum(amount) paid,min(id) first_id FROM payments GROUP BY rental_id) SELECT r.*,${this.guestBills?"(SELECT bill_id FROM guest_bill_lines WHERE kind='rental' AND source_id=r.id)":'NULL'} guestBillId,u.login issuedBy,v.login returnedBy,first_payment.method method,coalesce(pt.paid,0) paid FROM rentals r JOIN admin_users u ON u.id=r.created_by LEFT JOIN admin_users v ON v.id=r.returned_by LEFT JOIN payment_totals pt ON pt.rental_id=r.id LEFT JOIN payments first_payment ON first_payment.id=pt.first_id`;
-  const reserved=this.db.prepare(sql+' WHERE r.returned IS NULL ORDER BY r.departed').all();const active=reserved.filter(r=>r.initial_due===0);const pendingRentals=this.db.prepare(sql+' WHERE r.initial_due>0 ORDER BY r.id').all();
+  const reserved=this.db.prepare(sql+' WHERE r.returned IS NULL ORDER BY r.departed').all();const active=reserved.filter(r=>r.initial_due===0&&!r.departure_pending);const waitingDepartures=reserved.filter(r=>r.initial_due===0&&r.departure_pending);const pendingRentals=this.db.prepare(sql+' WHERE r.initial_due>0 ORDER BY r.id').all();
   const returned=this.db.prepare(sql+" WHERE r.returned IS NOT NULL AND date(r.returned/1000,'unixepoch','+3 hours')=? ORDER BY r.returned DESC").all(day);
   const dayRentals=this.db.prepare(sql+" WHERE substr(r.departed,1,10)<=? AND (r.returned IS NULL OR date(r.returned/1000,'unixepoch','+3 hours')>=?) ORDER BY r.departed DESC,r.id DESC").all(day,day);
   const [financeStart,financeEnd]=this.workforce.accountingBounds(day);const totals=this.db.prepare('SELECT method,sum(amount) amount FROM payments WHERE created>=? AND created<? GROUP BY method').all(financeStart,financeEnd);
-  const refundsCents=this.refunds.total(day,Date.now(),'rental');return {user,day,refundsCents,now:Date.now(),nearby:nearbyBookings(this),active,pendingRentals,rentalTerminalEnabled:!!this.rentalTerminal?.enabled,rentalPayments:this.rentalTerminal?.list()||[],returned,dayRentals,totals,fleet:orderedFleet(this,fleet).map(([id,label,total])=>({id,label,total,price:rates.find(i=>i.id===id)?.price??null,available:total-reserved.filter(r=>r.equipment===id).reduce((n,r)=>n+r.quantity,0)}))};
+  const refundsCents=this.refunds.total(day,Date.now(),'rental');return {user,day,refundsCents,now:Date.now(),nearby:nearbyBookings(this),active,waitingDepartures,pendingRentals,rentalTerminalEnabled:!!this.rentalTerminal?.enabled,rentalPayments:this.rentalTerminal?.list()||[],returned,dayRentals,totals,fleet:orderedFleet(this,fleet).map(([id,label,total])=>({id,label,total,price:rates.find(i=>i.id===id)?.price??null,available:total-reserved.filter(r=>r.equipment===id).reduce((n,r)=>n+r.quantity,0)}))};
  }
  shiftSettings(user){if(user.role!=='admin')fail('Только администратор.',403);return this.db.prepare('SELECT * FROM salary_settings WHERE id=1').get();}
  saveShiftSettings(b,user){const s=this.workforce.settings();return this.workforce.saveSettings({revision:b.revision??s.revision,fixedCents:b.fixedCents,bonusPercent:b.bonusPercent,hourlyCents:s.hourly_cents,payMode:s.pay_mode,distribution:s.distribution},user);}
@@ -223,7 +236,7 @@ export function adminHandler(store,origin){return async(req,res,url)=>{
   if(url.pathname==='/api/admin/fleet-order'&&req.method==='GET'){if(user.role!=='admin')return reply(403,{error:'Только администратор.'});return reply(200,fleetOrder(store,fleet));}
   if(url.pathname==='/api/admin/fleet-order'&&req.method==='POST')return reply(200,saveFleetOrder(store,fleet,b,user));
   if(url.pathname==='/api/admin/schedule'&&req.method==='GET')return reply(200,store.schedule.list(url.searchParams.get('week'),user));
-  if(url.pathname==='/api/admin/schedule'&&req.method==='POST')return reply(200,store.schedule.save(b,user));
+  if(url.pathname==='/api/admin/schedule'&&req.method==='POST'){const result=store.schedule.save(b,user);store.sms?.staffReminders?.wake?.();return reply(200,result);}
   if(url.pathname==='/api/admin/accounts'&&req.method==='GET')return reply(200,{items:store.accounts.list(user)});
   if(url.pathname==='/api/admin/accounts/password'&&req.method==='POST')return reply(200,store.accounts.password(b,user));
   if(url.pathname==='/api/admin/accounts/archive'&&req.method==='POST')return reply(200,store.accounts.archive(b,user));
@@ -247,8 +260,9 @@ export function adminHandler(store,origin){return async(req,res,url)=>{
   if(req.method==='GET'&&url.pathname==='/api/admin/calendar')return reply(200,calendarData(store,fleet,url.searchParams.get('date')||moscowDay(),Number(url.searchParams.get('days')||1)));
   if(req.method==='GET'&&url.pathname==='/api/admin/availability'){const start=localStamp(url.searchParams.get('start')),end=localStamp(url.searchParams.get('end'));return reply(200,{items:fleet.map(([id])=>availability(store.db,fleet,id,start,end,{close:store.sms?.content?.live().close}))});}
   if(req.method==='GET'&&url.pathname==='/api/admin/search')return reply(200,deskSearch(store,fleet,url.searchParams.get('q'),user));
-  if(req.method==='POST'&&(['/api/admin/rentals','/api/admin/extend'].includes(url.pathname)||url.pathname==='/api/admin/return'&&store.db.prepare('SELECT extension_due FROM rentals WHERE id=?').get(b.id)?.extension_due>0))store.workforce.requireOnDuty(Date.now(),user);
+  if(req.method==='POST'&&(['/api/admin/rentals','/api/admin/extend','/api/admin/rental-depart'].includes(url.pathname)||url.pathname==='/api/admin/return'&&store.db.prepare('SELECT extension_due FROM rentals WHERE id=?').get(b.id)?.extension_due>0))store.workforce.requireOnDuty(Date.now(),user);
   if(req.method==='POST'&&url.pathname==='/api/admin/extend')return reply(200,extendRental(store,fleet,b,user));
+  if(req.method==='POST'&&url.pathname==='/api/admin/rental-depart')return reply(200,departRental(store,fleet,b,user));
   if(req.method==='POST'&&url.pathname==='/api/admin/undo-return')return reply(200,undoReturn(store,fleet,b,user));
   if(req.method==='GET'&&url.pathname==='/api/admin/dashboard')return reply(200,store.dashboard(url.searchParams.get('day')||moscowDay(),user));
   if(req.method==='GET'&&url.pathname==='/api/admin/shift')return reply(200,{current:store.currentShift(url.searchParams.get('day')||moscowDay()),history:store.shifts()});

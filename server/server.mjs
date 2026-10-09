@@ -4,6 +4,13 @@ import {configureUxAudit,withUxAudit} from './ux-audit-integration.mjs';
 import {GuestBills} from './guest-bills.mjs';
 import {deskHealthHandler} from './desk-health.mjs';
 import {voiceEventsHandler} from './voice-events.mjs';
+import {BatteryStateStore,batteryStateHandler} from './battery-state.mjs';
+import {BatteryControlStore,batteryControlHandler} from './battery-control.mjs';
+import {BatteryTripStore,batteryTripHandler} from './battery-trips.mjs';
+import {randomBytes} from 'node:crypto';
+import {OperationsAnalytics,operationsAnalyticsHandler} from './operations-analytics.mjs';
+import {CafeProductCard,cafeProductCardHandler} from './cafe-product-card.mjs';
+import {CafeStopList,cafeStopListHandler} from './cafe-stop-list.mjs';
 import {serveAdminAsset} from './admin-assets.mjs';
 import {AqsiConnection,aqsiHandler} from './aqsi.mjs';
 import {AqsiRental} from './aqsi-rental.mjs';
@@ -17,6 +24,7 @@ import {CafeStore,cafeHandler} from './cafe.mjs';
 import {analyticsTag} from './analytics.mjs';
 import {withSiteChrome} from './site-shell.mjs';
 import {SmsStore,smsHandler} from './sms.mjs';
+import {staffSmsHandler,startStaffSmsWorker} from './staff-sms.mjs';
 import http from 'node:http';
 import {ContentStore,contentHandler} from './content.mjs';
 import {readFile} from 'node:fs/promises';
@@ -42,6 +50,14 @@ if(adminStore)adminStore.printStore=printStore;
 const handlePrint=printHandler(printStore,adminStore,origin);
 const handleDeskHealth=deskHealthHandler(adminStore,printStore,aqsi);
 const handleVoiceEvents=voiceEventsHandler(adminStore);
+const batteryState=adminStore?new BatteryStateStore(adminStore):null;
+const batteryControl=batteryState?new BatteryControlStore(batteryState,{key:process.env.BOOKING_DB===':memory:'?randomBytes(32):undefined,keyFile:process.env.BATTERY_CONTROL_KEY_FILE||path.join(path.dirname(process.env.BOOKING_DB),'battery-control.key'),firmwareDir:fileURLToPath(new URL('../firmware/esp32-bms-gateway/releases/',import.meta.url)),secureOrigin:origin.startsWith('https://')}):null;
+if(batteryState)batteryState.control=batteryControl;
+const batteryTrips=batteryState?new BatteryTripStore(batteryState):null;
+const handleBatteryControl=batteryControlHandler(batteryControl,batteryState,adminStore,origin);
+const handleBatteryTrips=batteryTripHandler(batteryTrips,adminStore,origin);
+if(batteryTrips)setInterval(()=>{try{batteryTrips.tick();}catch{console.error('Battery radio event check unavailable');}},5000).unref();
+const handleBatteryState=batteryStateHandler(batteryState,adminStore,origin);
 const contentStore=adminStore?new ContentStore(adminStore.db,path.join(path.dirname(process.env.BOOKING_DB),'media')):null;
 const handleContent=contentHandler(contentStore,adminStore,origin,path.join(root,'index.html'));
 const handleWorkforce=workforceHandler(adminStore?.workforce,adminStore,origin);
@@ -49,6 +65,8 @@ if(adminStore){const run=()=>adminStore.workforce.tick().catch(()=>console.error
 const handleAdmin=adminHandler(adminStore,origin);
 const smsStore=adminStore?new SmsStore(adminStore,contentStore):null;
 const handleSms=smsHandler(smsStore,adminStore,origin);
+const handleStaffSms=staffSmsHandler(smsStore?.staffReminders,adminStore,origin);
+if(smsStore)startStaffSmsWorker(smsStore.staffReminders);
 const cafeStore=adminStore?new CafeStore(adminStore,smsStore):null;
 const aqsiCafe=cafeStore?new AqsiCafe(adminStore,aqsi,cafeStore,{enabled:process.env.AQSI_CAFE_ENABLED==='1'}):null;
 if(cafeStore)cafeStore.terminal=aqsiCafe;
@@ -59,6 +77,10 @@ if(aqsiRental){const tick=()=>aqsiRental.tick().catch(()=>console.error('aQsi re
 const guestBills=adminStore?new GuestBills(adminStore,aqsi,cafeStore):null;if(adminStore)adminStore.guestBills=guestBills;if(guestBills){const tick=()=>guestBills.tick().catch(()=>console.error('Guest bill payment check unavailable'));setInterval(tick,5000).unref();}
 const handleCafeBoard=cafeBoardHandler(new CafeBoard(cafeStore),adminStore);
 const handleCafe=cafeHandler(cafeStore,adminStore,origin);
+const operationsAnalytics=adminStore?new OperationsAnalytics(adminStore,cafeStore):null;
+const handleOperationsAnalytics=operationsAnalyticsHandler(operationsAnalytics,adminStore,origin);
+const handleCafeProductCard=cafeProductCardHandler(cafeStore?new CafeProductCard(cafeStore,operationsAnalytics.costs):null,adminStore,origin);
+const handleCafeStopList=cafeStopListHandler(cafeStore?new CafeStopList(cafeStore):null,adminStore,origin);
 const inventoryStore=adminStore?new InventoryStore(adminStore):null;
 const handleInventory=inventoryHandler(inventoryStore,adminStore,origin);
 if(cafeStore){const run=()=>cafeStore.tick().catch(()=>console.error('Cafe notification worker failed'));setInterval(run,15000).unref();run();}
@@ -70,6 +92,12 @@ const types = {'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-
 http.createServer(async(req,res)=>{
   try {
     const url = new URL(req.url,origin);
+    if(await handleCafeProductCard(req,res,url))return;
+    if(await handleCafeStopList(req,res,url))return;
+    if(await handleOperationsAnalytics(req,res,url))return;
+    if(await handleBatteryState(req,res,url))return;
+    if(await handleBatteryControl(req,res,url))return;
+    if(await handleBatteryTrips(req,res,url))return;
     if(await handleVoiceEvents(req,res,url))return;
     if(await handleDeskHealth(req,res,url))return;
     if(await handleAqsi(req,res,url))return;
@@ -91,6 +119,7 @@ http.createServer(async(req,res)=>{
     }
     if(url.pathname==='/api/water-temperature'){if(req.method!=='GET')return json(res,405,{error:'method'});return json(res,200,water.snapshot());}
     if(await handleSms(req,res,url))return;
+    if(await handleStaffSms(req,res,url))return;
     if(await handleContent(req,res,url))return;
     if(url.pathname==='/index.html'){res.writeHead(301,{Location:'/'});res.end();return;}
     if(await handleAdmin(req,res,url))return;
@@ -117,7 +146,7 @@ http.createServer(async(req,res)=>{
     }
     if(req.method !== 'GET' && req.method !== 'HEAD')return json(res,405,{error:'method'});
     const pathname=decodeURIComponent(url.pathname);
-    const file=path.resolve(root,'.'+(pathname==='/'?'/index.html':['/admin','/admin/'].includes(pathname)?'/admin/index.html':['/admin/settings','/admin/settings/'].includes(pathname)?'/admin/settings.html':pathname==='/admin/aqsi/'?'/admin/aqsi.html':pathname==='/admin/schedule/'?'/admin/schedule.html':pathname==='/admin/accounts/'?'/admin/accounts.html':pathname==='/admin/tasks/'?'/admin/tasks.html':pathname==='/admin/purchase/'?'/admin/purchase.html':pathname==='/admin/workforce/'?'/admin/workforce.html':pathname==='/admin/cafe-stock/'?'/admin/cafe-stock.html':pathname));
+    const file=path.resolve(root,'.'+(pathname==='/admin/battery-state/'?'/admin/battery-state.html':pathname==='/admin/operations-analytics/'?'/admin/operations-analytics.html':pathname==='/admin/financial-analytics/'?'/admin/financial-analytics.html':pathname==='/'?'/index.html':['/admin','/admin/'].includes(pathname)?'/admin/index.html':['/admin/settings','/admin/settings/'].includes(pathname)?'/admin/settings.html':pathname==='/admin/aqsi/'?'/admin/aqsi.html':pathname==='/admin/schedule/'?'/admin/schedule.html':pathname==='/admin/accounts/'?'/admin/accounts.html':pathname==='/admin/tasks/'?'/admin/tasks.html':pathname==='/admin/purchase/'?'/admin/purchase.html':pathname==='/admin/workforce/'?'/admin/workforce.html':pathname==='/admin/cafe-stock/'?'/admin/cafe-stock.html':pathname));
     if(!file.startsWith(root+path.sep) || !types[path.extname(file)] || pathname.split('/').some(p=>p.startsWith('.')))return json(res,404,{error:'not_found'});
     if(await serveAdminAsset(req,res,file,url,types[path.extname(file)]))return;
     let data=await readFile(file);if(pathname.startsWith('/admin/')&&path.extname(file)==='.html')data=withUxAudit(data.toString('utf8'),adminStore?.uxAudit);res.writeHead(200,{'Content-Type':types[path.extname(file)],'X-Content-Type-Options':'nosniff',...(pathname.startsWith('/assets/')?{'Cache-Control':'public, max-age=86400'}:{}),...(pathname.startsWith('/admin')?{'Cache-Control':'no-store','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"}:{})});res.end(req.method==='HEAD'?undefined:data);
