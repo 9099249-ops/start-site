@@ -2,6 +2,7 @@ import {OperationsCosts,cafeCostKey,cafeLineCost,cafeLineCostEstimated} from './
 import {staffAnalytics} from './operations-analytics-staff.mjs';
 import {fleet} from './admin.mjs';
 import {FinancialExpenses} from './financial-expenses.mjs';
+import {NamedCatamaranCollector,catamaranFinance,allocateCatamaranCents} from './operations-analytics-catamarans.mjs';
 const DAY=86400000,HOUR=3600000,MSK=3*HOUR;
 const fail=(message,status=400)=>{throw Object.assign(Error(message),{status});};
 const day=t=>new Date(t+MSK).toISOString().slice(0,10);
@@ -46,7 +47,7 @@ export class OperationsAnalytics{
    const readCost=this.costs.reader(),staff=staffAnalytics(this.admin,period,now);
    if(staff.employees.some(e=>e.reviewCount))staff.warnings.push('Есть смены, требующие проверки. Их непроверенные часы и задержки не включены в подтверждённые итоги.');
    const warnings=[...staff.warnings];
-   const cafe=this.cafeReport(period,readCost,now),rental=this.rentalReport(period,readCost,now);
+   const cafe=this.cafeReport(period,readCost,now),rental=this.rentalReport(period,readCost,now,includeFinance);
    const wages=includeFinance?this.wages(period,now,staff.employees):{cents:null,estimated:false},settings=readCost('settings','global',period.start);
    const cafeWagesCents=wages.cents!==null&&known(settings.cafeWageBps)?Math.round(wages.cents*settings.cafeWageBps/10000):null;
    const rentalWagesCents=cafeWagesCents===null?null:wages.cents-cafeWagesCents;
@@ -67,6 +68,8 @@ export class OperationsAnalytics{
     const confirmed=expenses.confirmed&&netCents!==null&&!wages.estimated&&!rental.estimated&&!rental.reviewCount&&!cafe.totals.estimatedCostCount&&period.end<=now;
     data.finance.profit={revenueCents,directCostCents,feesCents,wageCents:wages.cents,overheadCents:expenses.summary.overheadCents,knownOverheadCents:expenses.summary.knownOverheadCents,beforeGeneralCents,netCents,confirmed};
     data.finance.expenses=expenses;
+    data.finance.catamarans=catamaranFinance(rental,cafe,data.finance,expenses,period,now);
+    warnings.push(...data.finance.catamarans.warnings);
     data.finance.cafeAfterOwnExpensesCents=data.finance.cafeResultCents===null||expenses.summary.departments.cafe===null?null:data.finance.cafeResultCents-expenses.summary.departments.cafe;
     data.finance.rentalAfterOwnExpensesCents=data.finance.rentalResultCents===null||expenses.summary.departments.rental===null?null:data.finance.rentalResultCents-expenses.summary.departments.rental;
     data.finance.sharedExpensesCents=expenses.summary.departments.shared;
@@ -77,6 +80,7 @@ export class OperationsAnalytics{
     warnings.push('Движение денег включает только зарегистрированные оплаты, расходы, выплаты и изъятия. Комиссия банка оценена по ставке; это не остаток банковского счёта или кассы.');
     data.warnings=[...new Set(warnings)];
    }
+   delete rental.catamaranRows;
    this.db.exec('COMMIT');return data;
   }catch(e){this.db.exec('ROLLBACK');throw e;}
  }
@@ -115,35 +119,41 @@ export class OperationsAnalytics{
   const cashRefund=this.db.prepare("SELECT coalesce(sum(amount_cents),0) cents FROM customer_refunds WHERE kind='cafe' AND created_at>=? AND created_at<?").get(p.start,Math.min(p.end,now+1)).cents;
   return {items:[...items.values()].sort((a,b)=>b.quantity-a.quantity),buckets:[...buckets.values()],itemBuckets:[...itemBuckets.values()],totals,unpaidQuantity,complimentaryQuantity,paymentFeesCents,paymentReceiptsCents:cash,paymentRefundsCents:cashRefund,paymentNetCents:cash-cashRefund};
  }
- rentalReport(p,cost,now){
+ rentalReport(p,cost,now,includeFinance=false){
   const items=new Map(fleet.map(([key,name,capacity])=>[key,{key,name,capacity,availableUnits:capacity,...empty()}])),buckets=new Map(),itemBuckets=new Map(),totals=empty();let reviewCount=0,estimated=false;
   const pays=this.db.prepare('SELECT rental_id,amount,method,created FROM payments WHERE created<=?').all(now),payments=new Map();for(const r of pays){if(!payments.has(r.rental_id))payments.set(r.rental_id,[]);payments.get(r.rental_id).push(r);}
+  const catamarans=includeFinance?new NamedCatamaranCollector(this.db,p,now):null,refundRows=this.db.prepare("SELECT source_id,amount_cents,created_at FROM customer_refunds WHERE kind='rental' AND created_at<=?").all(now),refundsByRental=new Map();
+  for(const refund of refundRows){if(!refundsByRental.has(refund.source_id))refundsByRental.set(refund.source_id,[]);refundsByRental.get(refund.source_id).push(refund);}
   const refunds=new Map(this.db.prepare("SELECT source_id,sum(amount_cents) cents FROM customer_refunds WHERE kind='rental' AND created_at<=? GROUP BY source_id").all(now).map(r=>[r.source_id,r.cents]));
   for(const row of this.db.prepare('SELECT id,equipment,quantity,departed,departed_at,departure_pending,created,returned,custom_json FROM rentals WHERE created<=?').all(now)){
    let item=items.get(row.equipment);if(!item){item={key:row.equipment,name:row.equipment==='manual'?'Свободная цена':row.equipment,availableUnits:null,...empty()};items.set(row.equipment,item);}
    if(row.returned===null&&item.availableUnits!==null)item.availableUnits=Math.max(0,item.availableUnits-row.quantity);
+   catamarans?.payments(row,payments.get(row.id)||[],refundsByRental.get(row.id)||[]);
    if(row.departure_pending)continue;const start=row.departed_at??Date.parse(row.departed+':00+03:00'),end=row.returned??now,version=cost('rental',row.equipment,row.created),totalPaid=(payments.get(row.id)||[]).reduce((n,r)=>n+r.amount,0),refunded=refunds.get(row.id)||0;
    if(row.custom_json){if(row.created>=p.start&&row.created<p.end){const r=empty();r.revenueCents=totalPaid-refunded;r.refundCents=refunded;r.costCents=null;r.feesCents=null;r.missingCostCount=1;add(item,r);add(bucket(buckets,row.created),r);add(totals,r);}continue;}
    const parts=splitService(start,end,totalPaid-refunded);
    if(row.returned===null&&start<p.end&&end>p.start)estimated=true;
-   if(!parts.length){if(start>=p.start&&start<p.end)reviewCount++;continue;}
+   if(!parts.length){if(start>=p.start&&start<p.end){reviewCount++;catamarans?.review(row);}continue;}
    const hours=(end-start)/HOUR,energyRequired=['catamaran','electric'].includes(row.equipment)&&version.electricityIncluded!==1;
    const energyKnown=!energyRequired||typeof version.kwhPerHour==='number'&&known(version.electricityTariffCents);
    const hourCents=known(version.hourCents)&&energyKnown?version.hourCents+(energyRequired?version.kwhPerHour*version.electricityTariffCents:0):null;
    const fullCost=known(version.issueCents)&&hourCents!==null?Math.round((version.issueCents+hourCents*hours)*row.quantity):null;
    // Issue preparation is charged at departure; hourly costs follow physical use.
    const variable=hourCents===null?null:Math.round(hourCents*hours*row.quantity),variableParts=splitService(start,end,variable??0),refundParts=splitService(start,end,refunded);
+   const fullElectricity=energyKnown?energyRequired?Math.round(version.kwhPerHour*version.electricityTariffCents*hours*row.quantity):0:null;
+   const electricityParts=fullElectricity===null?null:variable===null?splitService(start,end,fullElectricity).map(part=>part.cents):allocateCatamaranCents(fullElectricity,variableParts.map(part=>part.cents));
    let fullFees=0;for(const payment of payments.get(row.id)||[]){const f=fee(payment.amount,payment.method,cost('settings','global',payment.created).rentalCardBps);if(f===null){fullFees=null;break;}fullFees+=f;}
    const feeParts=splitService(start,end,fullFees??0);
    for(let n=0;n<parts.length;n++){
     const part=parts[n];if(part.start<p.start||part.start>=p.end)continue;
     const r=empty();r.unitMinutes=part.minutes*row.quantity;r.quantity=row.quantity*part.minutes/60;r.issues=n===0?1:0;r.units=n===0?row.quantity:0;r.revenueCents=part.cents;r.refundCents=refundParts[n].cents;r.costCents=fullCost===null?null:variableParts[n].cents+(n===0?version.issueCents*row.quantity:0);r.knownCostCents=r.costCents||0;r.missingCostCount=r.costCents===null?1:0;r.feesCents=fullFees===null?null:feeParts[n].cents;
     add(item,r);add(bucket(buckets,part.start),r);add(bucket(itemBuckets,part.start,row.equipment),r);add(totals,r);
+    catamarans?.service(row,part,r,electricityParts?.[n]??null,version.electricityIncluded===1);
    }
   }
   const paymentReceiptsCents=pays.filter(r=>r.created>=p.start&&r.created<p.end).reduce((n,r)=>n+r.amount,0),paymentRefundsCents=this.db.prepare("SELECT coalesce(sum(amount_cents),0) n FROM customer_refunds WHERE kind='rental' AND created_at>=? AND created_at<?").get(p.start,Math.min(p.end,now+1)).n;
   let paymentFeesCents=0;for(const payment of pays.filter(r=>r.created>=p.start&&r.created<p.end)){const charge=fee(payment.amount,payment.method,cost('settings','global',payment.created).rentalCardBps);paymentFeesCents=paymentFeesCents===null||charge===null?null:paymentFeesCents+charge;}
-  return {items:[...items.values()].filter(i=>i.units||i.unitMinutes||i.revenueCents||i.key==='catamaran'),buckets:[...buckets.values()],itemBuckets:[...itemBuckets.values()],totals,reviewCount,estimated,paymentFeesCents,paymentReceiptsCents,paymentRefundsCents,paymentNetCents:paymentReceiptsCents-paymentRefundsCents};
+  return {items:[...items.values()].filter(i=>i.units||i.unitMinutes||i.revenueCents||i.key==='catamaran'),buckets:[...buckets.values()],itemBuckets:[...itemBuckets.values()],totals,reviewCount,estimated,paymentFeesCents,paymentReceiptsCents,paymentRefundsCents,paymentNetCents:paymentReceiptsCents-paymentRefundsCents,catamaranRows:catamarans?.rows()||[]};
  }
  wages(p,now,employees){
   if(employees.some(e=>e.reviewCount))return {cents:null,estimated:true};

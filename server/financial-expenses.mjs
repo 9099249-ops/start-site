@@ -1,5 +1,6 @@
 import {readFileSync} from 'node:fs';
 import {createHash,randomUUID} from 'node:crypto';
+import {catamaranLabels} from './operations-analytics-catamarans.mjs';
 
 const DAY=86400000,MSK=10800000;
 const categories=new Set(['rent','electricity','water','tax','subscription','repair','other','bank_fee','stock','equipment','owner','depreciation']);
@@ -32,7 +33,7 @@ export class FinancialExpenses{
  withdrawals(now){return this.db.prepare('SELECT id,amount_cents,created_at FROM cash_movements WHERE created_at<=? AND voided_at IS NULL ORDER BY created_at DESC,id DESC').all(now).map(row=>({id:row.id,amountCents:row.amount_cents,day:day(row.created_at)}));}
  catalog(p,u,now=Date.now()){
   owner(u);const result=this.report(p,now);
-  return {...result,revision:this.revision(),costRevision:this.costs.revision(),canEdit:true,withdrawals:this.withdrawals(now)};
+  return {...result,revision:this.revision(),costRevision:this.costs.revision(),canEdit:true,withdrawals:this.withdrawals(now),catamaranLabels:catamaranLabels(this.db)};
  }
  report(p,now=Date.now()){
   const entries=this.entries(),withdrawals=new Map(this.withdrawals(now).map(row=>[row.id,row]));
@@ -72,11 +73,13 @@ export class FinancialExpenses{
    }else{
     const input=body.entry;
     if(!input||typeof input!=='object'||Array.isArray(input))fail('Проверьте расход.');
-    const allowed=['id','name','category','department','amountCents','includedCents','from','to','paidOn','method','withdrawalId','active'];
+    const allowed=['id','name','category','department','catamaranLabel','amountCents','includedCents','from','to','paidOn','method','withdrawalId','active'];
     if(Object.keys(input).some(key=>!allowed.includes(key)))fail('Неизвестное поле расхода.');
     const id=input.id??randomUUID(),previous=input.id?this.entries().find(row=>row.id===input.id):null;
     if(!uuid(id)||input.id&&!previous)fail('Расход не найден.',404);
     if(typeof input.name!=='string'||!input.name.trim()||input.name.length>120||!categories.has(input.category)||!['cafe','rental','shared'].includes(input.department)||typeof input.active!=='boolean'||!money(input.amountCents)||!money(input.includedCents))fail('Проверьте название, категорию и суммы расхода.');
+    const catamaranLabel=Object.hasOwn(input,'catamaranLabel')?input.catamaranLabel:previous?.catamaranLabel??null;
+    if(catamaranLabel!==null&&(input.department!=='rental'||typeof catamaranLabel!=='string'||!catamaranLabels(this.db).includes(catamaranLabel)))fail('Выберите катамаран для расхода проката.');
     const first=expenseDate(input.from),last=expenseDate(input.to);
     if(last<first||last-first>=366*DAY)fail('Период расхода: от 1 до 366 дней.');
     if(input.amountCents!==null&&input.includedCents!==null&&input.includedCents>input.amountCents)fail('Учтённая себестоимость не может быть больше всего расхода.');
@@ -90,7 +93,7 @@ export class FinancialExpenses{
      if(input.active&&(!row||row.amountCents!==input.amountCents||row.day!==input.paidOn))fail('Сумма и дата должны совпадать с изъятием из кассы.');
      if(input.active&&this.entries().some(row=>row.active&&row.id!==id&&row.method==='withdrawal'&&row.withdrawalId===input.withdrawalId))fail('Это изъятие уже связано с другим расходом.',409);
     }else if(input.withdrawalId!==null)fail('Изъятие выбирается только для оплаты из кассы.');
-    const entry=Object.fromEntries(allowed.filter(key=>key!=='id').map(key=>[key,key==='name'?input.name.trim():input[key]]));
+    const entry=Object.fromEntries(allowed.filter(key=>key!=='id').map(key=>[key,key==='name'?input.name.trim():key==='catamaranLabel'?catamaranLabel:input[key]]));
     this.db.prepare('INSERT INTO financial_expense_versions(expense_id,body,actor,request_id,created_at) VALUES(?,?,?,?,?)').run(id,JSON.stringify(entry),u.id,body.requestId,now);
    }
    this.db.prepare('INSERT INTO financial_expense_requests VALUES(?,?,?,?)').run(body.requestId,fingerprint,u.id,now);

@@ -40,8 +40,8 @@ test('Operations and finance pages expose separate Russian navigation and retain
  assert.match(opsHtml,/data-scope="operations"/);assert.match(financeHtml,/data-scope="financial"/);
  for(const html of [opsHtml,financeHtml]){assert.match(html,/ops-nav\.js\?v=rental-controls-20261010-3/);assert.match(html,/ops-nav\.css\?v=operations-analytics-20261007-3/);assert.match(html,/assets\/start-logo-horizontal\.webp/);}
  for(const html of [opsHtml,financeHtml]){
-  assert.match(html,/operations-analytics\.js\?v=finance-expenses-20261007-1/);
-  assert.match(html,/operations-analytics\.css\?v=finance-expenses-20261008-2/);
+  assert.match(html,/operations-analytics\.js\?v=catamaran-finance-ui-20261010-3/);
+  assert.match(html,/operations-analytics\.css\?v=catamaran-finance-ui-20261010-2/);
   assert.doesNotMatch(html,/<script[^>]+src="https?:/);
  }
  assert.doesNotMatch(opsHtml,/data-tab="costs"|Выручка|Себестоимость|Результат|paymentNetCents|revenueCents|refundCents|costCents|contributionCents/);
@@ -199,6 +199,6 @@ test('Finance shows profit separately from cash movement, with unknown totals ne
  assert.equal(kpis[2].children[0].textContent,'Движение денег · учтено');
  assert.match(kpis[2].children[1].textContent,/120/);
  assert.match(financeHtml,/data-tab="expenses"/);
- assert.match(financeHtml,/finance-expenses\.js\?v=finance-expenses-20261007-1/);
+ assert.match(financeHtml,/finance-expenses\.js\?v=finance-expenses-catamaran-20261010-3/);
  assert.doesNotMatch(opsHtml,/finance-expenses\.js|fe-form|panel-expenses/);
 });

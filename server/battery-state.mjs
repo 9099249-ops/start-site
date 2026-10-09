@@ -5,7 +5,7 @@ import {estimateChargeMinutes} from './battery-charge-estimate.mjs';
 import {batteryPresence} from './battery-presence.mjs';
 
 const DAY=86400000,RETENTION=30*DAY;
-const CATAMARANS=['Сашин','Наташин','С серой крышей'];
+export const CATAMARANS=['Сашин','Наташин','С серой крышей'];
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 const object=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
 const hash=v=>createHash('sha256').update(v).digest('hex');
