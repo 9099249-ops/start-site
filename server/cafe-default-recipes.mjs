@@ -36,8 +36,9 @@ const herbal = ['Иван-чай','Гречишный','Смородина с б
 const flavors = ['Таёжный','Гвоздика','Шиповник','Женьшень','Зефирки','Лемонграсс-лайм','Лесные ягоды','Вишня','Мороженое','Ежевика','Кислые ягоды','Черника','Арбуз','Дыня'];
 
 export function fillDefaultCafeRecipes(cafe,user) {
+ if(user?.role!=='admin')throw Object.assign(new Error('Автозаполнение доступно только администратору.'),{status:403});
  const stock=cafe.stock;
- stock.config(user); // Owner authorization before any mutation.
+ stock.config(user);
  const results=[...linkReadyMadePizzas(cafe,user),...linkReadyMadeProducts(cafe,user)];
  let config=stock.config(user);
  const findGood=name=>{const found=config.inventory.filter(i=>key(i.name)===key(name));return found.length===1?found[0]:null;};

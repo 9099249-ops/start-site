@@ -1,5 +1,5 @@
 (()=>{'use strict';
- const paths=new Set(['/admin/','/admin/cafe/','/admin/purchase/','/admin/tasks/','/admin/settings/','/admin/workforce/','/admin/schedule/','/admin/accounts/','/admin/aqsi/','/admin/cafe-stock/']);
+ const paths=new Set(['/admin/','/admin/cafe/','/admin/purchase/','/admin/tasks/','/admin/settings/','/admin/workforce/','/admin/schedule/','/admin/accounts/','/admin/aqsi/','/admin/cafe-stock/','/admin/operations-analytics/','/admin/financial-analytics/','/admin/battery-state/']);
  const frames=new Map(),host=document.querySelector('#workspace-frames'),loading=document.querySelector('#workspace-loading'),failure=document.querySelector('#workspace-failure');let current=null,timer=null,sessionKnown=false,userId=null,checking=false;
  function normalize(value){const u=new URL(value,location.origin);if(u.origin!==location.origin||!paths.has(u.pathname))return null;u.searchParams.delete('embedded');u.searchParams.delete('standalone');return u;}
  function signal(frame,type,extra={}){frame.contentWindow.postMessage({startWorkspace:type,...extra},location.origin);}

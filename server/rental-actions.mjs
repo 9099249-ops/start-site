@@ -11,6 +11,7 @@ export function extendRental(store,fleet,b,user,now=Date.now()){
  staff(user);if(!Number.isSafeInteger(b.id)||!Number.isSafeInteger(b.revision)||![30,60].includes(b.minutes))fail('Выберите продление на 30 или 60 минут.',400);
  return transaction(store.db,()=>{
   const r=store.db.prepare('SELECT * FROM rentals WHERE id=?').get(b.id);
+  if(r?.departure_pending)fail('Сначала отметьте «Отплыли».');
   if(r?.initial_due||store.rentalTerminal?.locked(r?.id))fail('Сначала завершите оплату на кассе.');if(!r||r.returned!==null||r.revision!==b.revision)fail('Аренда уже изменена. Обновите список.');
   const bill=store.guestBills?.link('rental',r.id);if(bill&&!bill.paid_at)store.guestBills.editable(bill.id,user);const end=r.expected_return+b.minutes*60000;
   // An overdue rental continues to occupy stock indefinitely until physically returned.
@@ -28,6 +29,7 @@ export function undoReturn(store,fleet,b,user,now=Date.now()){
  return transaction(store.db,()=>{
   const r=store.db.prepare('SELECT * FROM rentals WHERE id=?').get(b.id);
   if(!r||r.revision!==b.revision||r.returned!==b.returnedAt||r.returned_by!==user.id||now-r.returned>15000||now<r.returned)fail('Отмена возврата уже недоступна. Проверьте аренду.');
+  if(r.departure_pending)fail('Аренда отменена до отплытия. Возврат денег нельзя отменить этой кнопкой.');
   if(store.db.prepare("SELECT id FROM payments WHERE rental_id=? AND note='Доплата за продление при возврате'").get(r.id))fail('Доплата уже принята. Для отмены нужна сверка кассы администратором.');
   const a=availability(store.db,fleet,r.equipment,now,r.expected_return>now?r.expected_return:Number.MAX_SAFE_INTEGER,{ignoreRental:r.id,now,close:store.sms?.content?.live().close});
   const used=store.db.prepare('SELECT coalesce(sum(quantity),0) n FROM rentals WHERE equipment=? AND returned IS NULL').get(r.equipment).n;
@@ -48,7 +50,7 @@ export function deskSearch(store,fleet,query,user){
   const words=normal([name,label,equipment].join(' '));
   return Number(words.includes(n)||String(id||'')===q.replace(/^№\s*/,'')||isPhone&&phone(number).includes(p));
  });
- const rentals=db.prepare('SELECT r.id,r.equipment,r.quantity,r.name,r.phone,r.departed,r.expected_return,r.returned,r.revision,r.initial_due,(SELECT coalesce(sum(amount),0) FROM payments WHERE rental_id=r.id) paid,(SELECT method FROM payments WHERE rental_id=r.id ORDER BY id LIMIT 1) method FROM rentals r WHERE desk_match(name,phone,id,equipment) ORDER BY returned IS NULL DESC,id DESC LIMIT 30').all();
+ const rentals=db.prepare('SELECT r.id,r.equipment,r.quantity,r.name,r.phone,r.departed,r.departed_at,r.departure_pending,r.expected_return,r.returned,r.revision,r.initial_due,(SELECT coalesce(sum(amount),0) FROM payments WHERE rental_id=r.id) paid,(SELECT method FROM payments WHERE rental_id=r.id ORDER BY id LIMIT 1) method FROM rentals r WHERE desk_match(name,phone,id,equipment) ORDER BY returned IS NULL DESC,id DESC LIMIT 30').all();
  const bookings=db.prepare("SELECT id,details,status,revision,rental_id FROM inquiries WHERE desk_match(json_extract(details,'$.name'),json_extract(details,'$.phone'),id,json_extract(details,'$.equipment')) ORDER BY status='confirmed' DESC,id DESC LIMIT 30").all().map(r=>({...r,details:JSON.parse(r.details)}));
  const hasClients=db.prepare("SELECT name FROM sqlite_master WHERE name='clients'").get();
  const clients=hasClients?db.prepare('SELECT id,name,phone FROM clients WHERE desk_match(name,phone,NULL,NULL) ORDER BY last_seen DESC LIMIT 20').all():[];
