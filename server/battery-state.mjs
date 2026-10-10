@@ -58,7 +58,24 @@ export class BatteryStateStore{
   }
   return data;
  }
- list(user,now=Date.now()){owner(user);return {now,catamarans:[...CATAMARANS],devices:this.db.prepare('SELECT * FROM battery_devices ORDER BY name,device_id').all().map(r=>this.projection(r,now))};}
+ colorSettings(){const r=this.db.prepare('SELECT * FROM battery_color_settings WHERE id=1').get();return {greenFrom:r.green_from,yellowFrom:r.yellow_from,revision:r.revision};}
+ saveColors(body,user,now=Date.now()){
+  owner(user);if(!object(body))fail('Неверный запрос.');
+  const requestId=text(body.requestId,'Ключ запроса',80,false);if(!/^[a-zA-Z0-9_-]{16,80}$/.test(requestId))fail('Неверный ключ запроса.');
+  const greenFrom=number(body.greenFrom,'Зелёный от',0,100,true),yellowFrom=number(body.yellowFrom,'Жёлтый от',0,100,true),revision=number(body.revision,'Версия',0,2147483647,true);
+  if(yellowFrom>=greenFrom)fail('Жёлтый порог должен быть ниже зелёного.');
+  const fingerprint=hash(JSON.stringify({greenFrom,yellowFrom,revision}));
+  return this.tx(()=>{
+   const previous=this.db.prepare('SELECT * FROM battery_color_requests WHERE request_id=?').get(requestId);
+   if(previous){if(previous.fingerprint!==fingerprint||previous.actor_id!==user.id)fail('Ключ уже использован для другого запроса.',409);return {...JSON.parse(previous.result_json),duplicate:true};}
+   const before=this.colorSettings();if(before.revision!==revision)fail('Настройки изменились. Обновите пороги.',409);
+   this.db.prepare('UPDATE battery_color_settings SET green_from=?,yellow_from=?,revision=revision+1 WHERE id=1').run(greenFrom,yellowFrom);
+   const result={colorSettings:this.colorSettings()};
+   this.db.prepare('INSERT INTO battery_color_requests(request_id,fingerprint,result_json,actor_id,created_at) VALUES(?,?,?,?,?)').run(requestId,fingerprint,JSON.stringify(result),user.id,now);
+   this.admin.audit(user,'battery_colors');return result;
+  });
+ }
+ list(user,now=Date.now()){owner(user);return {now,colorSettings:this.colorSettings(),catamarans:[...CATAMARANS],devices:this.db.prepare('SELECT * FROM battery_devices ORDER BY name,device_id').all().map(r=>this.projection(r,now))};}
  manage(body,user,now=Date.now()){
   owner(user);if(!object(body))fail('Неверный запрос.');if(!['create','update','rotate-token'].includes(body.action))fail('Неизвестное действие.');const requestId=text(body.requestId,'Ключ запроса',80,false);if(!/^[a-zA-Z0-9_-]{16,80}$/.test(requestId))fail('Неверный ключ запроса.');
   const fingerprint=hash(JSON.stringify(Object.fromEntries(Object.keys(body).sort().map(k=>[k,body[k]]))));
@@ -137,18 +154,19 @@ export class BatteryStateStore{
 }
 
 export function batteryStateHandler(store,admin,origin){return async(req,res,url)=>{
- const machine=url.pathname==='/api/devices/battery-telemetry',read=url.pathname==='/api/admin/battery-state',history=url.pathname==='/api/admin/battery-state/history',manage=url.pathname==='/api/admin/battery-state/devices';
- if(!machine&&!read&&!history&&!manage)return false;
+ const machine=url.pathname==='/api/devices/battery-telemetry',read=url.pathname==='/api/admin/battery-state',history=url.pathname==='/api/admin/battery-state/history',manage=url.pathname==='/api/admin/battery-state/devices',colors=url.pathname==='/api/admin/battery-state/colors';
+ if(!machine&&!read&&!history&&!manage&&!colors)return false;
  const reply=(status,body)=>{const encoded=JSON.stringify(body);res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Content-Length':Buffer.byteLength(encoded),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(req.method==='HEAD'?undefined:encoded);return true;};
  try{
   if(!store||!admin)return reply(503,{error:'Мониторинг аккумуляторов не настроен.'});
   if(machine&&!req.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]+)$/))return reply(401,{error:'Модуль не авторизован.'});
-  const expected=machine||manage?['POST']:['GET','HEAD'];if(!expected.includes(req.method))return reply(405,{error:'Метод не поддерживается.'});
+  const expected=colors?['GET','HEAD','POST']:machine||manage?['POST']:['GET','HEAD'];if(!expected.includes(req.method))return reply(405,{error:'Метод не поддерживается.'});
   let user=null;if(!machine){const sid=(req.headers.cookie||'').split(';').map(s=>s.trim()).find(s=>s.startsWith('__Host-start_session='))?.slice(21);user=admin.user(sid);if(!user)return reply(401,{error:'Войдите в админку.'});owner(user);}
   if(read)return reply(200,store.list(user));if(history)return reply(200,store.history(url.searchParams.get('deviceId'),user,Date.now(),url.searchParams.get('limit')??60));
+  if(colors&&req.method!=='POST')return reply(200,{colorSettings:store.colorSettings()});
   if(!req.headers['content-type']?.startsWith('application/json')||(!machine&&req.headers.origin!==origin))return reply(403,{error:'Недопустимый источник или формат запроса.'});
   const cap=machine?16384:8192;let length=0;const chunks=[];for await(const chunk of req){length+=chunk.length;if(length>cap){req.resume();return reply(413,{error:'Запрос слишком большой.'});}chunks.push(chunk);}
   let body;try{body=JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{return reply(400,{error:'Неверный JSON.'});}
-  return reply(200,machine?store.ingest(body,req.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]+)$/)?.[1]):store.manage(body,user));
+  return reply(200,colors?store.saveColors(body,user):machine?store.ingest(body,req.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]+)$/)?.[1]):store.manage(body,user));
  }catch(e){return reply(e.status||500,{error:e.status?e.message:'Не удалось обработать данные аккумулятора.'});}
 };}

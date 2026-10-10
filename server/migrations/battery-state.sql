@@ -31,3 +31,13 @@ CREATE TABLE IF NOT EXISTS battery_device_events (
  id INTEGER PRIMARY KEY, device_id TEXT NOT NULL REFERENCES battery_devices(device_id),
  actor_id INTEGER NOT NULL, action TEXT NOT NULL, created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS battery_color_settings (
+ id INTEGER PRIMARY KEY CHECK(id=1), green_from INTEGER NOT NULL DEFAULT 50,
+ yellow_from INTEGER NOT NULL DEFAULT 20, revision INTEGER NOT NULL DEFAULT 0,
+ CHECK(yellow_from>=0 AND yellow_from<green_from AND green_from<=100)
+);
+INSERT OR IGNORE INTO battery_color_settings(id) VALUES(1);
+CREATE TABLE IF NOT EXISTS battery_color_requests (
+ request_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, result_json TEXT NOT NULL,
+ actor_id INTEGER NOT NULL, created_at INTEGER NOT NULL
+);

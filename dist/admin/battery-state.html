@@ -9,9 +9,9 @@
  <link rel="stylesheet" href="/admin/ops-nav.css?v=operations-analytics-20261007-3">
  <link rel="stylesheet" href="/admin/pos.css">
  <link rel="stylesheet" href="/admin/visual-v2.css">
- <link rel="stylesheet" href="/admin/battery-state.css?v=battery-state-20261009-2">
+ <link rel="stylesheet" href="/admin/battery-state.css?v=battery-colors-20261010-2">
  <script defer src="/admin/ops-nav.js?v=rental-controls-20261010-3"></script>
- <script defer src="/admin/battery-state.js?v=battery-state-20261009-3"></script>
+ <script defer src="/admin/battery-state.js?v=battery-colors-20261010-2"></script>
 </head>
 <body class="theme-rental">
  <main class="battery-page">
@@ -20,6 +20,14 @@
    <button id="battery-add" class="primary" type="button" hidden>Добавить аккумулятор</button>
   </header>
   <p id="battery-status" class="battery-status" role="status" aria-live="polite">Загружаем состояние…</p>
+  <form id="battery-color-form" class="battery-color-form" hidden>
+   <label>Зелёный от, %<input name="greenFrom" type="number" min="0" max="100" step="1" required inputmode="numeric"></label>
+   <label>Жёлтый от, %<input name="yellowFrom" type="number" min="0" max="100" step="1" required inputmode="numeric"></label>
+   <button id="battery-color-save" class="primary" type="submit">Сохранить</button>
+   <button id="battery-color-retry" type="button" hidden>Повторить сохранение</button>
+   <p id="battery-color-message" role="status" aria-live="polite"></p>
+   <button id="battery-color-reload" type="button" hidden>Загрузить актуальные настройки</button>
+  </form>
   <a id="battery-login" href="/admin/" hidden>Войти в админку</a>
   <p class="battery-park-note">Три катамарана, пять аккумуляторов. Каждый аккумулятор можно переименовать и перенести в другую группу, сохранив его историю.</p>
   <section id="battery-empty" class="battery-empty" hidden>

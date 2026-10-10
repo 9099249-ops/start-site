@@ -93,9 +93,9 @@ export class BatteryTripStore {
  overview(user,now=Date.now()){
   staff(user);this.tick(now);const devices=this.devices(now);
   const rentals=this.db.prepare("SELECT r.*,(SELECT coalesce(sum(amount),0) FROM payments WHERE rental_id=r.id) paid FROM rentals r WHERE r.equipment='catamaran' AND r.returned IS NULL ORDER BY r.departed,r.id").all().filter(r=>this.eligible(r)).map(r=>({id:r.id,clientLabel:r.name,start:localStamp(r.departed),expectedReturn:r.expected_return,quantity:r.quantity}));
-  return {now,catamarans:labels.map(label=>{
+  return {now,colorSettings:this.battery.colorSettings(),catamarans:labels.map(label=>{
    const trip=this.db.prepare('SELECT * FROM battery_trips WHERE label=? ORDER BY created_at DESC LIMIT 1').get(label);
-   return {label,devices:devices.filter(d=>d.catamaranLabel===label).map(d=>{const temperatures=d.telemetry?.temperaturesC?.filter(Number.isFinite)??[];return {deviceId:d.deviceId,name:d.name,socPercent:d.telemetry?.socPercent??null,voltageV:d.telemetry?.voltageV??null,currentA:d.telemetry?.currentA??null,state:d.telemetry?.state??'unknown',temperatureC:temperatures.length?Math.max(...temperatures):null,estimatedMinutes:d.estimate?.kind==='discharge'?d.estimate.minutes:null,estimatedChargeMinutes:d.estimate?.kind==='charge'?d.estimate.minutes:null,online:d.online,stale:d.stale,bmsConnected:d.bmsConnected,lastMeasuredAt:d.lastMeasuredAt};}),trip:trip?this.projection(trip,now):null};
+   return {label,devices:devices.filter(d=>d.catamaranLabel===label).map(d=>{const temperatures=d.telemetry?.temperaturesC?.filter(Number.isFinite)??[],statusAge=d.telemetry?.fieldAgesMs?.status;return {deviceId:d.deviceId,name:d.name,socPercent:d.telemetry?.socPercent??null,voltageV:d.telemetry?.voltageV??null,currentA:d.telemetry?.currentA??null,state:d.telemetry?.state??'unknown',stateFresh:Number.isFinite(statusAge)&&statusAge<=d.staleAfterSeconds*1000,temperatureC:temperatures.length?Math.max(...temperatures):null,estimatedMinutes:d.estimate?.kind==='discharge'?d.estimate.minutes:null,estimatedChargeMinutes:d.estimate?.kind==='charge'?d.estimate.minutes:null,online:d.online,stale:d.stale,bmsConnected:d.bmsConnected,lastMeasuredAt:d.lastMeasuredAt};}),trip:trip?this.projection(trip,now):null};
   }),rentals};
  }
  manage(body,user,now=Date.now()){

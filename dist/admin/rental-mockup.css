@@ -234,8 +234,8 @@ body.theme-rental #waiting-departures .departure-details>div{width:100%!importan
  body.theme-rental #workspace .rental-battery-list{grid-template-columns:1fr!important;gap:6px!important}
  body.theme-rental .rental-battery-summary{grid-template-columns:48px minmax(0,1fr) 14px!important;gap:8px!important;min-height:80px!important;padding:7px 10px!important}
  body.theme-rental .rental-battery-ring{width:44px!important}
- body.theme-rental .rental-battery-ring:before{inset:5px!important}
- body.theme-rental .rental-battery-ring b{font-size:14px!important}
+ body.theme-rental .rental-battery-ring:before{inset:10px!important}
+ body.theme-rental .rental-battery-ring b{font-size:9px!important}
  body.theme-rental .rental-battery-runtime{font-size:18px!important}
  body.theme-rental .rental-battery-summary-copy strong{font-size:14px!important;overflow-wrap:normal!important}
  body.theme-rental .rental-battery-summary-copy small{font-size:11px!important}

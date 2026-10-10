@@ -7,6 +7,7 @@ const cards=new Map();let timer=null,loading=false,user=null,lastPollAt=0,overvi
 const number=value=>Number.isFinite(value)?Number(value).toLocaleString('ru-RU',{maximumFractionDigits:0})+'%':'—';
 const duration=value=>{const minutes=Math.round(value),hours=Math.floor(minutes/60),rest=minutes%60;return hours?`${hours} ч ${rest} мин`:`${rest} мин`;};
 const valid=device=>device.online===true&&device.stale===false&&device.bmsConnected===true&&Number.isFinite(device.socPercent);
+const thresholds=settings=>({greenFrom:Number.isInteger(settings?.greenFrom)?settings.greenFrom:50,yellowFrom:Number.isInteger(settings?.yellowFrom)?settings.yellowFrom:20});
 function makeCard(label){
  const article=el('article');article.className='rental-battery-card';article.dataset.catamaran=label;
  const summary=el('div');summary.className='rental-battery-summary';summary.dataset.fresh='false';summary.dataset.mode='unknown';
@@ -14,25 +15,26 @@ function makeCard(label){
  const copy=el('span');copy.className='rental-battery-summary-copy';const title=el('strong',label),runtime=el('b','—');runtime.className='rental-battery-runtime';const caption=el('small','Нет данных'),perDevice=el('small','');perDevice.className='rental-battery-summary-soc';copy.append(title,runtime,caption,perDevice);summary.append(ring,copy);article.append(summary);list.append(article);
  const view={article,summary,ring,charge,runtime,caption,perDevice};cards.set(label,view);return view;
 }
-function fleetSummary(devices){
+function fleetSummary(devices,colorSettings){
  const allKnown=devices.length>0&&devices.every(device=>Number.isFinite(device.socPercent));
  const allFresh=allKnown&&devices.every(valid);
  const soc=allKnown?Math.min(...devices.map(device=>device.socPercent)):null;
  const states=devices.map(device=>device.state);let mode='unknown',runtime='—',caption='Нет данных';
  if(devices.some(device=>device.online===false||device.stale===true))caption='Нет связи';
- else if(allFresh&&states.every(state=>state==='charging')){mode='charging';const estimates=devices.map(device=>device.estimatedChargeMinutes);runtime=estimates.every(value=>Number.isFinite(value)&&value>=0)?duration(Math.max(...estimates)):'—';caption='Заряжается';}
- else if(allFresh&&states.every(state=>state==='discharging')){mode='discharging';const estimates=devices.map(device=>device.estimatedMinutes);runtime=estimates.every(value=>Number.isFinite(value)&&value>=0)?duration(Math.min(...estimates)):'—';caption='Работа';}
+ else if(allFresh&&devices.every(device=>device.stateFresh!==false)&&states.every(state=>state==='charging')){mode='charging';const estimates=devices.map(device=>device.estimatedChargeMinutes);runtime=estimates.every(value=>Number.isFinite(value)&&value>=0)?duration(Math.max(...estimates)):'—';caption='Заряжается';}
+ else if(allFresh&&devices.every(device=>device.stateFresh!==false)&&states.every(state=>state==='discharging')){mode='discharging';const estimates=devices.map(device=>device.estimatedMinutes);runtime=estimates.every(value=>Number.isFinite(value)&&value>=0)?duration(Math.min(...estimates)):'—';caption='Работа';}
  else if(allFresh&&states.every(state=>state==='idle')){mode='idle';caption='Ожидание';}
  else if(!devices.length)caption='Нет данных';
  else if(!allKnown)caption='Нет данных';
  else if(!allFresh)caption='Нет связи';
  else caption='Разное состояние';
- return {allKnown,allFresh,soc,mode,runtime,caption};
+ const {greenFrom,yellowFrom}=thresholds(colorSettings);
+ return {allKnown,allFresh,soc,mode,runtime,caption,charge:soc===null?'unknown':soc>=greenFrom?'high':soc>=yellowFrom?'medium':'low'};
 }
-function updateCard(view,devices){
- const summary=fleetSummary(devices);view.article.dataset.state=summary.allFresh?'fresh':summary.caption==='Нет связи'?'stale':'unknown';
+function updateCard(view,devices,colorSettings){
+ const summary=fleetSummary(devices,colorSettings);view.article.dataset.state=summary.allFresh?'fresh':summary.caption==='Нет связи'?'stale':'unknown';
  view.summary.dataset.fresh=String(summary.allFresh);view.summary.dataset.mode=summary.mode;
- view.summary.dataset.charge=summary.soc===null?'unknown':summary.soc>=50?'high':summary.soc>=20?'medium':'low';
+ view.summary.dataset.charge=summary.soc===null?'unknown':summary.charge;
  view.charge.textContent=number(summary.soc);view.ring.style.setProperty('--soc',summary.soc===null?'0%':`${Math.max(0,Math.min(100,summary.soc))}%`);
  view.runtime.textContent=summary.allFresh&&summary.runtime!=='—'?`≈ ${summary.runtime}`:'—';view.runtime.hidden=!summary.allFresh||summary.runtime==='—';view.caption.textContent=summary.caption;
  view.perDevice.textContent=devices.length>1?devices.map(device=>`${device.name||'Аккумулятор'}: ${number(device.socPercent)}`).join(' · '):'';
@@ -41,7 +43,7 @@ function render(data){
  overview=data;const boats=new Map((Array.isArray(data.catamarans)?data.catamarans:[]).map(boat=>[boat.label,boat]));
  for(const label of names)if(!cards.has(label))makeCard(label);
  for(const boat of data.catamarans||[])if(boat.label&&!cards.has(boat.label))makeCard(boat.label);
- for(const [label,view] of cards){const boat=boats.get(label),devices=Array.isArray(boat?.devices)?boat.devices:[];view.article.hidden=!boat;updateCard(view,devices);}
+ for(const [label,view] of cards){const boat=boats.get(label),devices=Array.isArray(boat?.devices)?boat.devices:[];view.article.hidden=!boat;updateCard(view,devices,data.colorSettings);}
  if(status)status.textContent='';
 }
 function publishOverview(data){window.STARTBatteryOverview=data;document.dispatchEvent(new CustomEvent('start:battery-overview',{detail:data}));}
